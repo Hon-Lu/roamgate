@@ -81,4 +81,13 @@ test("copy paths do not prefix an absolute filesystem entry with the workspace",
   expect(absolutePath("/workspace", { ...entry, path: "docs/r.md" })).toBe(
     "/workspace/docs/r.md",
   );
+  expect(
+    absolutePath("C:\\Users\\me\\repo", { ...entry, path: "docs/r.md" }),
+  ).toBe("C:\\Users\\me\\repo\\docs\\r.md");
+  expect(absolutePath("C:\\", { ...entry, path: "docs/r.md" })).toBe(
+    "C:\\docs\\r.md",
+  );
+  expect(absolutePath("C:/repo", { ...entry, path: "docs/r.md" })).toBe(
+    "C:/repo/docs/r.md",
+  );
 });

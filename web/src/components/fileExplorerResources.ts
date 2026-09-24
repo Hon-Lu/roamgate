@@ -28,10 +28,14 @@ export function displaySize(entry: FileExplorerEntry) {
   return `${(entry.size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Entry paths use "/"; follow a backslash root's separator so Windows hosts
+// get one consistent native path.
 export function absolutePath(root: string, entry: FileExplorerEntry) {
-  return /^(?:\/|[a-z]:[\\/])/i.test(entry.path)
-    ? entry.path
-    : `${root.replace(/\/+$/, "")}/${entry.path}`;
+  if (/^(?:\/|[a-z]:[\\/])/i.test(entry.path)) return entry.path;
+  if (root.includes("\\")) {
+    return `${root.replace(/[\\/]+$/, "")}\\${entry.path.replace(/\//g, "\\")}`;
+  }
+  return `${root.replace(/\/+$/, "")}/${entry.path}`;
 }
 
 export function initialWorkspacePath(workspace?: {
