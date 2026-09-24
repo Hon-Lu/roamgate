@@ -714,6 +714,32 @@ describe("endpoint terminal link provider", () => {
     expect((await f.links(1))[0]?.text).toBe("/tmp/new.md");
   });
 
+  test("opens a Windows drive path with forward-slash separators", async () => {
+    const f = fixture(["Read C:\\repo\\AGENTS.md now"], 30);
+    const opened: string[] = [];
+    registerTerminalLinkProvider(f.term, (path) => opened.push(path));
+    const previous = getShortcutSnapshot().preferences.active;
+    try {
+      selectShortcutPreset("windows");
+      const [link] = await f.links(1);
+      expect(link?.text).toBe("C:\\repo\\AGENTS.md");
+      link!.activate(
+        {
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          preventDefault() {},
+        } as MouseEvent,
+        link!.text,
+      );
+      expect(opened).toEqual(["C:/repo/AGENTS.md"]);
+      expect(f.requests).toEqual([]);
+    } finally {
+      selectShortcutPreset(previous);
+    }
+  });
+
   test("rechecks file actions at click time and forwards the menu position", async () => {
     const f = fixture(["/tmp/docs/guide.md"], 30);
     let state = 1;

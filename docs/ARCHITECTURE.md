@@ -139,6 +139,8 @@ requests and invalidates clipboard ownership.
 Local detection scans soft-wrapped text with cell coordinates. File detection
 also considers bounded, indented continuations because endpoint cell repaints
 lack soft-wrap metadata; inferred paths must resolve within the pane's workspace.
+File detection accepts POSIX paths plus Windows drive (`C:\`) and backslash
+paths; relative paths must resolve, and absolute paths link with `/` separators.
 Blank lines separate contexts. Local URL detection never guesses missing tails.
 
 Endpoint repaints carry an opaque `link_frame` identity, stable across identical,

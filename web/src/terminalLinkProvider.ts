@@ -303,9 +303,11 @@ export function registerTerminalLinkProvider(
       }
       const accepted: TextRange[] = [];
       for (const candidate of candidates) {
+        // Resolved paths come back with "/" separators; match that for
+        // unresolved Windows drive paths too.
         const path = needsResolution(candidate)
           ? resolved.get(candidate.path)
-          : candidate.path;
+          : candidate.path.replace(/\\/g, "/");
         if (!path || accepted.some((span) => overlaps(candidate, span)))
           continue;
         accepted.push(candidate);
