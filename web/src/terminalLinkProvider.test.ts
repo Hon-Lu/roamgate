@@ -769,9 +769,14 @@ describe("endpoint terminal link provider", () => {
       const [link] = await f.links(1);
       link!.activate(event, link!.text);
       expect(opened).toEqual([["/tmp/docs/guide.md", event]]);
+      // A repaint elsewhere in the frame keeps the visible path clickable.
       state++;
       link!.activate(event, link!.text);
-      expect(opened).toHaveLength(1);
+      expect(opened).toHaveLength(2);
+      // Once the row shows different text, the old link is inert.
+      f.lines[0]!.text = "/tmp/docs/other.md";
+      link!.activate(event, link!.text);
+      expect(opened).toHaveLength(2);
     } finally {
       selectShortcutPreset(previous);
     }
