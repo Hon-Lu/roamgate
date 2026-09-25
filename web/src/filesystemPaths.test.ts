@@ -91,3 +91,24 @@ test("copy paths do not prefix an absolute filesystem entry with the workspace",
     "C:/repo/docs/r.md",
   );
 });
+
+test.each([
+  ["/srv/repo\\name", "/srv/repo\\name/docs/r.md"],
+  ["/srv/repo\\", "/srv/repo\\/docs/r.md"],
+  ["\\\\server\\share\\repo", "\\\\server\\share\\repo\\docs\\r.md"],
+  ["//server/share/repo", "//server/share/repo/docs/r.md"],
+])(
+  "copy and dragged paths preserve the host separators for %s",
+  (root, expected) => {
+    expect(
+      absolutePath(root, {
+        name: "r.md",
+        path: "docs/r.md",
+        type: "file",
+        size: 0,
+        mtime_ms: 0,
+        hidden: false,
+      }),
+    ).toBe(expected);
+  },
+);

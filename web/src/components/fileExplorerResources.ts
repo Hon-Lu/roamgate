@@ -28,11 +28,11 @@ export function displaySize(entry: FileExplorerEntry) {
   return `${(entry.size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// Entry paths use "/"; follow a backslash root's separator so Windows hosts
-// get one consistent native path.
+// Entry paths use "/". Only Windows roots use backslash separators; POSIX
+// directory names can contain literal backslashes.
 export function absolutePath(root: string, entry: FileExplorerEntry) {
   if (/^(?:\/|[a-z]:[\\/])/i.test(entry.path)) return entry.path;
-  if (root.includes("\\")) {
+  if (/^(?:[a-z]:[\\/]|\\\\)/i.test(root) && root.includes("\\")) {
     return `${root.replace(/[\\/]+$/, "")}\\${entry.path.replace(/\//g, "\\")}`;
   }
   return `${root.replace(/\/+$/, "")}/${entry.path}`;
