@@ -355,7 +355,15 @@ export function PopupOverlay({
             <X size={14} />
           </button>
         </div>
-        <div ref={containerRef} style={{ flex: 1, minHeight: 0 }} />
+        <div
+          ref={containerRef}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            // Like normal panes, cancel interface zoom only for terminal content.
+            zoom: "calc(1 / var(--ui-scale, 1))",
+          }}
+        />
       </div>
     </div>
   );
