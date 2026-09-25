@@ -536,6 +536,63 @@ describe("endpoint terminal link provider", () => {
     },
   );
 
+  test.each([
+    "part/http://x.test",
+    "part/(http://x.test)",
+    "  https://example.com/part",
+  ])("does not publish an unverified URL after a repaint: %s", async (text) => {
+    const f = fixture(["", text, "  continuation"], 60);
+    Object.assign(f.term.buffer.active, { viewportY: 0 });
+    let state = 1;
+    let finish!: (value: typeof resolved) => void;
+    registerTerminalLinkProvider(f.term, undefined, undefined, () => true, {
+      state: () => state,
+      resolve: () =>
+        new Promise((done) => {
+          finish = done;
+        }),
+    });
+    const links = f.links(2);
+    state++;
+    finish({
+      url: text.trimStart() + "continuation",
+      regions: [
+        { row: 1, start_col: 0, end_col: text.length - 1 },
+        { row: 2, start_col: 2, end_col: 13 },
+      ],
+    });
+    expect(await links).toEqual([]);
+  });
+
+  test("keeps complete URLs and Windows file links when a pending probe is invalidated", async () => {
+    const f = fixture(
+      ["part/http://bad.test See http://x.test C:\\repo\\a.md"],
+      80,
+    );
+    let state = 1;
+    let finish!: (value: null) => void;
+    registerTerminalLinkProvider(
+      f.term,
+      () => {},
+      undefined,
+      () => true,
+      {
+        state: () => state,
+        resolve: () =>
+          new Promise((done) => {
+            finish = done;
+          }),
+      },
+    );
+    const links = f.links(1);
+    state++;
+    finish(null);
+    expect((await links).map((link) => link.text)).toEqual([
+      "http://x.test",
+      "C:\\repo\\a.md",
+    ]);
+  });
+
   test("keeps a wrapped continuation before a complete URL on the same row", async () => {
     const head = "https://example.com/aaaa";
     const tail = "part";

@@ -342,6 +342,7 @@ export function registerTerminalLinkProvider(
         : null;
       const first = rowText?.text.search(/\S/) ?? -1;
       const columns = new Set<number>();
+      const completeUrlColumns = new Set<number>();
       const rowUrls = findTerminalHttpLinks(rowText?.text ?? "");
       // A complete visible URL is already authoritative. Probing it remotely
       // can replace its trimmed punctuation with a wider region, or lose every
@@ -376,15 +377,23 @@ export function registerTerminalLinkProvider(
               link.start > first,
           );
         if (!complete) columns.add(col);
+        else completeUrlColumns.add(col);
       }
       if (touch) {
         columns.clear();
         columns.add(touch.col);
       }
-      // A repaint elsewhere invalidates upstream answers, but links read
-      // from this row's unchanged text still hold.
-      const publishTextLinks = () =>
-        callback(textCurrent() && links.length ? links : undefined);
+      // Preserve files and independently complete URLs across repaints, not
+      // provisional URL fragments whose boundaries still need an upstream answer.
+      const publishTextLinks = () => {
+        const stable = links.filter(
+          (link) =>
+            link.target.kind === "file" ||
+            (link.range.start.y === bufferLineNumber &&
+              completeUrlColumns.has(link.range.start.x - 1)),
+        );
+        callback(textCurrent() && stable.length ? stable : undefined);
+      };
       const resolve = async () => {
         const resolved: TerminalResolvedLink[] = [];
         for (const col of [...columns].slice(0, MAX_CANDIDATES_PER_LINE)) {
