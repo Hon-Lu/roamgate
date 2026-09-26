@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   isTerminalImeCommittedInputType,
+  TerminalImeBackspaceTracker,
   TerminalImeCommitGuard,
   terminalImeEventTime,
   terminalImeFallbackText,
@@ -69,10 +70,27 @@ describe("terminal IME key-event deduplication", () => {
     tracker.recordXtermData("A");
 
     expect(tracker.consumeInput({ data: "A", inputType: "insertText" })).toBe(
-      true,
+      "A",
     );
     expect(tracker.consumeInput({ data: "A", inputType: "insertText" })).toBe(
-      false,
+      "",
+    );
+  });
+
+  test("reports the prefix xterm emitted from a multi-character key", () => {
+    // Gboard on iOS reports a whole candidate as one key; xterm emits only
+    // its first character.
+    const tracker = new TerminalImeKeyEventTracker();
+    tracker.begin();
+    tracker.recordXtermData("測");
+    expect(
+      tracker.consumeInput({ data: "測試", inputType: "insertText" }),
+    ).toBe("測");
+
+    tracker.begin();
+    tracker.recordXtermData(" ");
+    expect(tracker.consumeInput({ data: " ㄕ", inputType: "insertText" })).toBe(
+      " ",
     );
   });
 
@@ -80,7 +98,7 @@ describe("terminal IME key-event deduplication", () => {
     const tracker = new TerminalImeKeyEventTracker();
     tracker.begin();
     expect(tracker.consumeInput({ data: "中", inputType: "insertText" })).toBe(
-      false,
+      "",
     );
 
     tracker.begin();
@@ -90,7 +108,13 @@ describe("terminal IME key-event deduplication", () => {
         data: "，",
         inputType: "insertCompositionText",
       }),
-    ).toBe(false);
+    ).toBe("");
+
+    tracker.begin();
+    tracker.recordXtermData("X");
+    expect(tracker.consumeInput({ data: "中", inputType: "insertText" })).toBe(
+      "",
+    );
   });
 
   test("resets stale key data on a new key cycle or keyup", () => {
@@ -100,15 +124,50 @@ describe("terminal IME key-event deduplication", () => {
     tracker.begin();
     tracker.recordXtermData("B");
     expect(tracker.consumeInput({ data: "B", inputType: "insertText" })).toBe(
-      true,
+      "B",
     );
 
     tracker.begin();
     tracker.recordXtermData("C");
     tracker.end();
     expect(tracker.consumeInput({ data: "C", inputType: "insertText" })).toBe(
-      false,
+      "",
     );
+  });
+});
+
+describe("terminal IME native backspace", () => {
+  test("mirrors each deletion a keyboard makes under one Backspace keydown", () => {
+    // Gboard on iOS deletes every Zhuyin symbol before inserting a candidate.
+    const tracker = new TerminalImeBackspaceTracker();
+    expect(tracker.begin()).toBe(false);
+
+    expect(tracker.consumeDeletion()).toBe(true);
+    expect(tracker.consumeDeletion()).toBe(true);
+    expect(tracker.end()).toBe(false);
+  });
+
+  test("still erases when Backspace deleted nothing", () => {
+    const tracker = new TerminalImeBackspaceTracker();
+    tracker.begin();
+    expect(tracker.end()).toBe(true);
+
+    // A repeated keydown ends the previous cycle before its keyup.
+    tracker.begin();
+    expect(tracker.begin()).toBe(true);
+    tracker.consumeDeletion();
+    expect(tracker.end()).toBe(false);
+  });
+
+  test("ignores deletions outside a Backspace key cycle", () => {
+    const tracker = new TerminalImeBackspaceTracker();
+    expect(tracker.consumeDeletion()).toBe(false);
+    expect(tracker.end()).toBe(false);
+
+    tracker.begin();
+    tracker.cancel();
+    expect(tracker.consumeDeletion()).toBe(false);
+    expect(tracker.end()).toBe(false);
   });
 });
 

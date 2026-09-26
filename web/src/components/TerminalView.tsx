@@ -100,6 +100,8 @@ import {
 import { uploadTerminalImage } from "../terminalImageUpload";
 import {
   isTerminalImeCommittedInputType,
+  TERMINAL_BACKSPACE,
+  TerminalImeBackspaceTracker,
   TerminalImeCommitGuard,
   TerminalImeFallbackTracker,
   TerminalImeKeyEventTracker,
@@ -985,6 +987,9 @@ export function TerminalView({
     const imeKeyEvent = new TerminalImeKeyEventTracker();
     const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
     const imeCommitGuard = new TerminalImeCommitGuard();
+    const imeBackspace = new TerminalImeBackspaceTracker();
+    // Mirrored erases enter as xterm user input, as a handled Backspace does.
+    const eraseBackward = () => term.input(TERMINAL_BACKSPACE, true);
     const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
       const textarea = term.textarea;
       const value = textarea?.value ?? "";
@@ -1444,15 +1449,32 @@ export function TerminalView({
         e.stopPropagation();
         return false;
       }
+      // Touch keyboards may delete several characters under one Backspace
+      // keydown. Leave it to the native deletion that input mirrors.
+      const nativeBackspace =
+        e.type === "keydown" &&
+        appleTouchPlatform &&
+        !terminalCompositionActive &&
+        e.key === "Backspace" &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.metaKey &&
+        !e.shiftKey;
       // xterm's capture listener runs before our textarea keydown listener.
       // Its custom handler is the boundary before any synchronous onData.
       if (e.type === "keydown") {
+        // Settle the previous Backspace cycle before this key's data starts.
+        const missedErase = nativeBackspace
+          ? imeBackspace.begin()
+          : imeBackspace.end();
+        if (missedErase) eraseBackward();
         imeCommitGuard.beginIndependentInput();
         if (applePlatform) imeKeyEvent.begin();
       }
       if (e.type === "keydown" && e.keyCode !== 229) {
         imeTextareaFallback.cancelPending();
       }
+      if (nativeBackspace) return false;
       const sequence = terminalShortcutSequence(
         e,
         getShortcutSnapshot().preset.bindings,
@@ -1560,6 +1582,7 @@ export function TerminalView({
     };
     const onTerminalKeyUp = (event: KeyboardEvent) => {
       imeKeyEvent.end();
+      if (imeBackspace.end()) eraseBackward();
       if (!applePlatform || !imeTextareaFallback.hasPending()) return;
 
       // A keydown reported as 229 can have a keyup reported as 0 or as the
@@ -1609,6 +1632,7 @@ export function TerminalView({
       closeTerminalInput(shouldAvoidVirtualKeyboard());
       imeCommitGuard.beginIndependentInput();
       imeKeyEvent.end();
+      imeBackspace.cancel();
       cancelCompositionSettle();
       terminalCompositionActive = false;
       cancelNativePasteFallback();
@@ -1662,7 +1686,7 @@ export function TerminalView({
     };
     const handleTerminalTextInput = (e: Event) => {
       const input = e as InputEvent;
-      const xtermHandledCurrentInput = imeKeyEvent.consumeInput(input);
+      const xtermEmittedInput = imeKeyEvent.consumeInput(input);
       const textareaSnapshot = readTerminalTextareaSnapshot();
       const textareaBeforeInput = lastTerminalTextareaSnapshot;
       const hadPasteSnapshot = pasteTextareaBeforeInput !== null;
@@ -1729,10 +1753,21 @@ export function TerminalView({
       pasteTextareaBeforeInput = null;
       pastePaneIdBeforeInput = null;
 
-      if (xtermHandledCurrentInput) {
+      if (
+        input.inputType === "deleteContentBackward" &&
+        imeBackspace.consumeDeletion()
+      ) {
+        eraseBackward();
+        return;
+      }
+
+      if (xtermEmittedInput) {
         // Safari still mutates the helper textarea after xterm handles some
-        // printable keys in keypress. Do not replay that same committed text.
+        // printable keys in keypress. Send only the committed text xterm did
+        // not emit, such as the rest of a multi-character Gboard candidate.
         imeTextareaFallback.cancelPending();
+        const missingText = input.data?.slice(xtermEmittedInput.length);
+        if (missingText) sendText(missingText);
         return;
       }
 

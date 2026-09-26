@@ -44,19 +44,71 @@ export class TerminalImeKeyEventTracker {
     if (this.active) this.xtermData += text;
   }
 
-  consumeInput(input: Pick<InputEvent, "data" | "inputType">): boolean {
-    const alreadyHandled =
+  /**
+   * Returns the start of the committed text that xterm already emitted from
+   * this key cycle, or "" when none of it was. Gboard on iOS reports a whole
+   * multi-character candidate as one key, and xterm emits only its first
+   * character.
+   */
+  consumeInput(input: Pick<InputEvent, "data" | "inputType">): string {
+    const emitted =
       this.active &&
       isTerminalImeCommittedInputType(input.inputType) &&
       !!input.data &&
-      this.xtermData === input.data;
+      this.xtermData.length > 0 &&
+      input.data.startsWith(this.xtermData)
+        ? this.xtermData
+        : "";
     this.end();
-    return alreadyHandled;
+    return emitted;
   }
 
   end(): void {
     this.active = false;
     this.xtermData = "";
+  }
+}
+
+/** xterm's default Backspace sequence. */
+export const TERMINAL_BACKSPACE = "\x7f";
+
+/**
+ * Tracks one Backspace key cycle that is left to the browser's native
+ * deletion. Third-party iOS keyboards such as Gboard replace typed Zhuyin with
+ * the chosen candidate by deleting several characters under one Backspace
+ * keydown; letting xterm cancel that keydown drops the first deletion and
+ * leaves the keyboard out of step with the textarea. Each native deletion is
+ * mirrored to the pane, and a cycle that deleted nothing, such as Backspace in
+ * an empty textarea, still sends one erase.
+ */
+export class TerminalImeBackspaceTracker {
+  private active = false;
+  private deleted = false;
+
+  /** Starts a cycle and reports whether the previous one needs an erase. */
+  begin(): boolean {
+    const missed = this.end();
+    this.active = true;
+    return missed;
+  }
+
+  /** Returns whether a native deletion belongs to the current cycle. */
+  consumeDeletion(): boolean {
+    if (!this.active) return false;
+    this.deleted = true;
+    return true;
+  }
+
+  /** Ends the cycle and reports whether it deleted nothing. */
+  end(): boolean {
+    const missed = this.active && !this.deleted;
+    this.cancel();
+    return missed;
+  }
+
+  cancel(): void {
+    this.active = false;
+    this.deleted = false;
   }
 }
 
