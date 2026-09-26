@@ -5,7 +5,6 @@ import {
   buildActiveDiffSelection,
   clearDiffViewerResourceCache,
   diffCacheKey,
-  diffRevealPath,
   diffRuntimeContextKey,
   diffSelectionStorageKey,
   expandedDirsForEntries,
@@ -412,35 +411,5 @@ describe("connection-scoped diff identity", () => {
     current = true;
     await prefetchDiffViewerWorkspace("same", client);
     expect(diffCalls).toBe(2);
-  });
-});
-
-describe("diffRevealPath", () => {
-  const entry = (status: string) => ({
-    path: "src/app.ts",
-    kind: "unstaged" as const,
-    status,
-  });
-
-  test("opens changed files and folders under the Git root", () => {
-    expect(
-      diffRevealPath("C:/repo/", {
-        path: "src/app.ts",
-        entries: [entry("modified")],
-      }),
-    ).toBe("C:/repo/src/app.ts");
-    expect(
-      diffRevealPath("/repo", {
-        path: "src",
-        entries: [entry("modified")],
-        directory: true,
-      }),
-    ).toBe("/repo/src");
-  });
-
-  test("opens the folder a deleted file was in", () => {
-    expect(
-      diffRevealPath("/repo", { path: "src/app.ts", entries: [entry("D")] }),
-    ).toBe("/repo/src");
   });
 });

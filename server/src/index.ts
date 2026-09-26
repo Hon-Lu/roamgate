@@ -1,6 +1,7 @@
 import type { ServerWebSocket } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
+import { canRevealFiles } from "./workspace/file-manager";
 import { createWebPushService } from "./notifications/web-push";
 import { rmSync } from "node:fs";
 import packageJson from "../../package.json";
@@ -1406,6 +1407,7 @@ function main() {
                 capabilities: {
                   connection_id: true,
                   connection_scoped_http: true,
+                  file_reveal: canRevealFiles(ws.remoteAddress),
                   connection_runtime_generation: true,
                   herdr_task_notifications:
                     config.taskNotificationSource === "herdr",

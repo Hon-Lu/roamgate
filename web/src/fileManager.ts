@@ -1,32 +1,40 @@
-import type { ConnectionClient } from "./api";
-import {
-  detectShortcutPlatform,
-  type ShortcutPlatform,
-} from "./shortcutBindings";
+import { bridge, type ConnectionClient, type ConnectionSummary } from "./api";
+import type { ShortcutPlatform } from "./shortcutBindings";
 import { store, useStoreSelector } from "./store";
 
 type RevealClient = Pick<ConnectionClient, "call" | "isCurrent">;
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-// The server opens the file manager on its own desktop, so only a browser on
-// that machine, talking to a local Herdr, is offered the menu item.
-export function useCanRevealInFileManager() {
-  const local = useStoreSelector((state) => {
-    const connection = state.connections.find(
-      (candidate) => candidate.id === state.activeConnectionId,
-    );
-    return connection !== undefined && !connection.ssh_destination;
-  });
-  return local && LOOPBACK_HOSTS.has(location.hostname);
+export function canRevealInFileManager(
+  connection: Pick<ConnectionSummary, "type" | "ssh_destination"> | undefined,
+  capability: unknown,
+) {
+  return (
+    capability === true &&
+    connection !== undefined &&
+    connection.type !== "ssh" &&
+    !connection.ssh_destination
+  );
 }
 
-// The browser runs on the server's machine, so its platform names the file
-// manager that opens.
+export function useCanRevealInFileManager() {
+  return useStoreSelector((state) =>
+    canRevealInFileManager(
+      state.connections.find(
+        (candidate) => candidate.id === state.activeConnectionId,
+      ),
+      state.status === "connected" && bridge.hello?.capabilities.file_reveal,
+    ),
+  );
+}
+
+// A browser platform does not identify the host platform.
 export function revealMenuLabel(
   directory: boolean,
-  platform: ShortcutPlatform = detectShortcutPlatform(),
+  platform?: ShortcutPlatform,
 ) {
+  if (!platform) {
+    return directory ? "Open folder on host" : "Reveal on host";
+  }
   if (platform === "linux") {
     return directory ? "Open folder" : "Open containing folder";
   }
@@ -39,12 +47,17 @@ export async function revealInFileManager(
   client: RevealClient,
   workspaceId: string,
   path: string,
+  source?: "changes",
 ) {
   try {
     await client.call("file.reveal", {
       workspace_id: workspaceId,
       path,
-      ...(/^(?:\/|[a-z]:[\\/])/i.test(path) ? { scope: "filesystem" } : {}),
+      ...(source === "changes"
+        ? { source }
+        : /^(?:[\\/]|[a-z]:[\\/])/i.test(path)
+          ? { scope: "filesystem" }
+          : {}),
     });
   } catch (error) {
     if (!client.isCurrent()) return;

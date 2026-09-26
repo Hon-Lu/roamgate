@@ -49,7 +49,6 @@ import {
   revealMenuLabel,
   useCanRevealInFileManager,
 } from "../fileManager";
-import { parentFilesystemPath } from "../filesystemPaths";
 import {
   buildGitFileMenuItems,
   buildGitRepoMenuItems,
@@ -834,20 +833,6 @@ type DiffContextMenuState = {
   entries: GitDiffEntry[];
   directory?: boolean;
 };
-
-// Change paths are relative to the Git root, which can differ from the
-// explorer root. A deleted file no longer exists, so open the folder it was in.
-export function diffRevealPath(
-  root: string,
-  menu: Pick<DiffContextMenuState, "path" | "entries" | "directory">,
-) {
-  const path = `${root.replace(/[\\/]+$/, "")}/${menu.path}`;
-  const deleted =
-    !menu.directory &&
-    menu.entries.length > 0 &&
-    menu.entries.every((entry) => gitDiffCode(entry) === "D");
-  return deleted ? parentFilesystemPath(path) : path;
-}
 
 type DiffConfirmState = {
   title: string;
@@ -1886,7 +1871,8 @@ export const DiffViewerPanel = forwardRef<
                           void revealInFileManager(
                             connectionClient,
                             workspace.workspace_id,
-                            diffRevealPath(cache.summary!.root, contextMenu),
+                            contextMenu.path,
+                            "changes",
                           ),
                       },
                     ]

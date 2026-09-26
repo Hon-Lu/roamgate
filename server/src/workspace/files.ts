@@ -36,7 +36,7 @@ import { runGitFileAction, runGitRepoAction } from "./git-actions";
 import { collectIgnoredNames } from "./git-ignore";
 import { GIT_DIFF_TIMEOUT_MS } from "./file-constants";
 import { inlinePreviewMimeForPath } from "./preview";
-import { isLoopbackAddress, revealLocalPath } from "./file-manager";
+import { canRevealFiles, revealLocalPath } from "./file-manager";
 import {
   HTML_PREVIEW_MAX_BYTES,
   isHtmlPath,
@@ -53,12 +53,14 @@ export function createFileHandlers({
   runProcessWithCodeTimeout,
   shQuote,
   lastStepBaselines,
+  revealPath = revealLocalPath,
 }: {
   herdr: HerdrClient;
   sshHost: () => string | undefined;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
   lastStepBaselines?: LastStepBaselineStore;
+  revealPath?: typeof revealLocalPath;
 }) {
   async function explorerRoot(
     workspaceId: string,
@@ -212,17 +214,40 @@ export function createFileHandlers({
     };
   }
 
-  // The file manager opens on this machine's desktop, so only a browser on it,
-  // talking to a local Herdr, may ask for one.
   async function revealFile(
     params: Record<string, unknown>,
     clientAddress: string,
   ) {
-    if (sshHost() || !isLoopbackAddress(clientAddress)) {
-      throw new Error("file.reveal is only available on this machine");
+    if (sshHost() || !canRevealFiles(clientAddress)) {
+      throw new Error(
+        "file.reveal requires host opt-in, a local profile and a loopback peer",
+      );
     }
-    const { checkoutPath, path } = await downloadTarget(params, "file.reveal");
-    return revealLocalPath(checkoutPath, path);
+    const scope = params.scope ?? "workspace";
+    if (scope !== "workspace" && scope !== "filesystem") {
+      throw new Error("invalid file.reveal scope");
+    }
+    if (params.source !== undefined && params.source !== "changes") {
+      throw new Error("invalid file.reveal source");
+    }
+    const changes = params.source === "changes";
+    if (changes && scope !== "workspace") {
+      throw new Error("Changes reveal requires a Git-root-relative path");
+    }
+    const workspaceId = String(params.workspace_id ?? "");
+    if (!workspaceId) throw new Error("file.reveal requires workspace_id");
+    if (typeof params.path !== "string" || !params.path) {
+      throw new Error("file.reveal requires path");
+    }
+    const workspace = await getWorkspace(workspaceId);
+    const root = changes
+      ? await gitRoot(workspaceId, workspace)
+      : await explorerRoot(workspaceId, workspace);
+    if (!root) throw new Error("workspace has no directory path");
+    return revealPath(root, params.path, {
+      scope,
+      nearestExistingAncestor: changes,
+    });
   }
 
   async function resolveFiles(params: Record<string, unknown>) {

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  canRevealFiles,
   fileManagerCommand,
   isLoopbackAddress,
   revealLocalPath,
@@ -26,7 +27,20 @@ async function checkout() {
   return root;
 }
 
-test("only loopback clients are on the host", () => {
+test("reveal capability requires explicit host opt-in and a loopback peer", () => {
+  for (const value of [undefined, "", "0", "true"]) {
+    expect(
+      canRevealFiles("127.0.0.1", { ROAMGATE_ALLOW_FILE_REVEAL: value }),
+    ).toBe(false);
+  }
+  const environment = { ROAMGATE_ALLOW_FILE_REVEAL: "1" };
+  expect(canRevealFiles("127.0.0.1", environment)).toBe(true);
+  expect(canRevealFiles("::1", environment)).toBe(true);
+  expect(canRevealFiles("::ffff:127.0.0.1", environment)).toBe(true);
+  expect(canRevealFiles("192.168.1.20", environment)).toBe(false);
+});
+
+test("identifies loopback transport addresses without inferring browser location", () => {
   for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) {
     expect(isLoopbackAddress(address)).toBe(true);
   }
