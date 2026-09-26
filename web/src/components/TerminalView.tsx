@@ -95,7 +95,7 @@ import {
 import {
   terminalFocusBlockedByOverlay,
   terminalPointerShouldBlurInput,
-  terminalTouchShouldDismissInput,
+  terminalTouchIsInputTap,
 } from "../terminalFocus";
 import { uploadTerminalImage } from "../terminalImageUpload";
 import {
@@ -110,6 +110,7 @@ import {
   terminalImeFallbackText,
   terminalImeTextareaDelta,
 } from "../terminalIme";
+import { TerminalCursorMover } from "../terminalCursorMove";
 import { terminalShortcutSequence } from "../terminalKeys";
 import { TerminalHistorySelection } from "../terminalHistorySelection";
 import {
@@ -988,6 +989,7 @@ export function TerminalView({
     const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
     const imeCommitGuard = new TerminalImeCommitGuard();
     const imeBackspace = new TerminalImeBackspaceTracker();
+    const cursorMover = new TerminalCursorMover(term);
     // Mirrored erases enter as xterm user input, as a handled Backspace does.
     const eraseBackward = () => term.input(TERMINAL_BACKSPACE, true);
     const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
@@ -1463,6 +1465,7 @@ export function TerminalView({
       // xterm's capture listener runs before our textarea keydown listener.
       // Its custom handler is the boundary before any synchronous onData.
       if (e.type === "keydown") {
+        cursorMover.cancel();
         // Settle the previous Backspace cycle before this key's data starts.
         const missedErase = nativeBackspace
           ? imeBackspace.begin()
@@ -1633,6 +1636,7 @@ export function TerminalView({
       imeCommitGuard.beginIndependentInput();
       imeKeyEvent.end();
       imeBackspace.cancel();
+      cursorMover.cancel();
       cancelCompositionSettle();
       terminalCompositionActive = false;
       cancelNativePasteFallback();
@@ -2444,10 +2448,27 @@ export function TerminalView({
       e.preventDefault();
       e.stopPropagation();
     };
+    // A tap on the cursor's input moves the cursor; any other tap dismisses
+    // input.
+    const handleInputTap = (touch: Touch) => {
+      const { row, column } = terminalCellAtPoint(
+        term,
+        touch.clientX,
+        touch.clientY,
+      );
+      const moving =
+        row !== undefined &&
+        column !== undefined &&
+        cursorMover.moveTo({
+          line: term.buffer.active.viewportY + row,
+          col: column,
+        });
+      if (!moving) closeTerminalInput();
+    };
     const onTouchEnd = (e: TouchEvent) => {
       touchSelection.cancelPending();
       if (!touchSelection.active) endpointPresentation.cancelSelection();
-      const dismissInput = terminalTouchShouldDismissInput(
+      const inputTap = terminalTouchIsInputTap(
         touchStartX !== null && touchStartY !== null,
         touchMoved,
         inputActiveRef.current,
@@ -2460,7 +2481,8 @@ export function TerminalView({
       // Cancel compatibility mouse events before xterm can focus or report them.
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (dismissInput) closeTerminalInput();
+      const touch = e.changedTouches[0];
+      if (inputTap && touch) handleInputTap(touch);
     };
     const onTouchCancel = () => {
       retireTouchLink();
@@ -2586,6 +2608,7 @@ export function TerminalView({
       resizeSync.dispose();
       resizeSyncRef.current = null;
       attachWatchdogRef.current?.cancel();
+      cursorMover.cancel();
       cancelImeTextareaFallback();
       cancelCompositionSettle();
       cancelNativePasteFallback();

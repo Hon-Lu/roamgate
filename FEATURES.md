@@ -226,8 +226,10 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   `desktop`, or `auto` overrides saved mode until a menu choice clears it.
   Agent/workspace panel order is saved separately for each layout.
 - Touch reads output without opening the keyboard. Use **Open device keyboard**
-  to type; a light terminal tap dismisses it without input. Long-press selects
-  text for **Copy**, **Add comment**, or link actions; **Done**/Esc exits.
+  to type. While typing, a light tap inside the input being edited moves the
+  cursor there with arrow keys; any other light tap dismisses the keyboard.
+  Long-press selects text for **Copy**, **Add comment**, or link actions;
+  **Done**/Esc exits.
   Scroll first to select older output. Selection freezes the displayed frame,
   not the connection; legacy streams resume at a 1 MiB buffered UTF-16 limit.
 - Customize the floating `2×8` grid and up to four side buttons under

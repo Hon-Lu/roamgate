@@ -14,7 +14,8 @@ const RADIX_POPPER_CONTENT_WRAPPER = "[data-radix-popper-content-wrapper]";
 type FocusableLike = Pick<Element, "closest">;
 type DocumentLike = Pick<Document, "querySelector">;
 
-export function terminalTouchShouldDismissInput(
+/** A completed light tap on the terminal while its input is active. */
+export function terminalTouchIsInputTap(
   started: boolean,
   moved: boolean,
   inputActive: boolean,
