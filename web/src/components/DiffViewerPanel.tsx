@@ -45,6 +45,12 @@ import { store } from "../store";
 import { copyTextFromUserGesture } from "../terminalClipboard";
 import { bumpFileExplorerRefresh } from "../fileExplorerRefresh";
 import {
+  revealInFileManager,
+  revealMenuLabel,
+  useCanRevealInFileManager,
+} from "../fileManager";
+import { parentFilesystemPath } from "../filesystemPaths";
+import {
   buildGitFileMenuItems,
   buildGitRepoMenuItems,
   countWorkingEntries,
@@ -829,6 +835,20 @@ type DiffContextMenuState = {
   directory?: boolean;
 };
 
+// Change paths are relative to the Git root, which can differ from the
+// explorer root. A deleted file no longer exists, so open the folder it was in.
+export function diffRevealPath(
+  root: string,
+  menu: Pick<DiffContextMenuState, "path" | "entries" | "directory">,
+) {
+  const path = `${root.replace(/[\\/]+$/, "")}/${menu.path}`;
+  const deleted =
+    !menu.directory &&
+    menu.entries.length > 0 &&
+    menu.entries.every((entry) => gitDiffCode(entry) === "D");
+  return deleted ? parentFilesystemPath(path) : path;
+}
+
 type DiffConfirmState = {
   title: string;
   message: string;
@@ -845,6 +865,7 @@ export const DiffViewerPanel = forwardRef<
 ) {
   const workspaces = useStoreSelector((state) => state.workspaces);
   const connectionClient = useConnectionClient();
+  const canReveal = useCanRevealInFileManager();
   const focusedWorkspace = workspaces.find((w) => w.focused);
   const workspace = workspaceId
     ? workspaces.find((w) => w.workspace_id === workspaceId)
@@ -1852,6 +1873,20 @@ export const DiffViewerPanel = forwardRef<
                           copyPath(
                             `${cache.summary?.root}/${contextMenu.path}`,
                             "Absolute path",
+                          ),
+                      },
+                    ]
+                  : []),
+                ...(canReveal && cache.summary?.root && workspace?.workspace_id
+                  ? [
+                      {
+                        key: "reveal",
+                        label: revealMenuLabel(!!contextMenu.directory),
+                        action: () =>
+                          void revealInFileManager(
+                            connectionClient,
+                            workspace.workspace_id,
+                            diffRevealPath(cache.summary!.root, contextMenu),
                           ),
                       },
                     ]

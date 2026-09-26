@@ -182,6 +182,11 @@ after fetch, and abort conflicts. They never push.
 - Upload by dragging onto a checkout directory; download files or workspace
   `.tar.gz` directories; copy paths or delete with confirmation via right-click
   or long-press. Upload/delete stay checkout-scoped. Operations work over SSH.
+- In a browser on the Roamgate host with a local connection, the explorer and
+  Changes context menus open the file manager: **Reveal in File Explorer**
+  (**Reveal in Finder** on macOS) opens a file's folder with the file
+  selected, and **Open in File Explorer** (**Open in Finder**) opens a
+  directory. Linux uses **Open containing folder** and **Open folder**.
 - Drag a file or folder from the tree with the mouse to insert its absolute path
   into the active terminal pane or the terminal composer.
 

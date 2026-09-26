@@ -296,6 +296,12 @@ view. Search filters loaded entries only.
 
 Absolute previews use `scope=filesystem` download URLs; relative Markdown links
 and images resolve beside their source. Upload/delete remain checkout-scoped.
+`file.reveal` opens the host file manager with a fixed per-platform argv
+(`explorer.exe`, `open`, `xdg-open`), never a shell. It follows download path
+scoping and is refused on SSH connections and for non-loopback clients, since
+the window opens on the Roamgate host. On Windows the server then moves the new
+Explorer window to the foreground through `user32` (`bun:ffi`); otherwise a
+window opened by a background process stays behind the browser.
 Explorer caches are separate from lazy UI code. Mermaid previews share a lazy
 renderer, strip wrappers/metadata only for detection, and retain original source.
 Images are inert elements; SVG is never inserted into the app DOM, and direct
