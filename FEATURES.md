@@ -55,6 +55,8 @@ the first pane a jump can reach.
   modifier. Selection freezes presentation until cleared. Desktop edge-drag
   captures offscreen rows; release, blur, or changed content stops scrolling.
 - Paste images to upload them to the connected host and insert their paths.
+  Local connections store them in `roamgate/images` under the OS temp directory
+  and insert a native absolute path; SSH connections use the remote `/tmp`.
   OSC 52 clipboard writes follow Herdr's foreground recipient, not proven source
   pane ownership; see [clipboard limits](docs/DEPLOYMENT.md#herdr-compatibility).
 - `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; file/directory paths,

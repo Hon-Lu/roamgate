@@ -1,7 +1,19 @@
+import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sshCommandArgv } from "../bridge/ssh-command";
+
+// Local pastes collect in one Roamgate folder under the OS temp directory.
+// The returned path is absolute in the host's native form, so an agent in any
+// shell or on any drive opens the same file. A bare "/tmp" is drive-relative
+// on Windows.
+export function defaultImageUploadDirectory() {
+  return join(tmpdir(), "roamgate", "images");
+}
 
 export function createImageUploadHandler(args: {
   sshHost: () => string | undefined;
+  localDirectory?: () => string;
 }) {
   return async function handleImageUpload(req: Request): Promise<Response> {
     try {
@@ -19,7 +31,7 @@ export function createImageUploadHandler(args: {
         (req.headers.get("x-image-ext") || "png")
           .toLowerCase()
           .replace(/[^a-z0-9]/g, "") || "png";
-      const name = `herdr-img-${Date.now()}-${Math.random()
+      const name = `img-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}.${ext}`;
       const sshHost = args.sshHost();
@@ -42,7 +54,10 @@ export function createImageUploadHandler(args: {
         return Response.json({ path: remotePath, remote: true });
       }
 
-      const localPath = `/tmp/${name}`;
+      const directory =
+        args.localDirectory?.() ?? defaultImageUploadDirectory();
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const localPath = join(directory, name);
       await Bun.write(localPath, buf);
       return Response.json({ path: localPath, remote: false });
     } catch (e) {
