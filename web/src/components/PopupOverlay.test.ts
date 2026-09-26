@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { TERMINAL_FONT_FAMILY } from "../appearance";
 import { __storeTesting, store } from "../store";
 import { PopupOverlay } from "./PopupOverlay";
 
@@ -22,6 +23,7 @@ test("only the popup terminal cancels interface zoom", () => {
     const markup = renderToStaticMarkup(
       React.createElement(PopupOverlay, {
         terminalTheme: {},
+        terminalFontFamily: TERMINAL_FONT_FAMILY,
         terminalFontScale: 100,
       }),
     );

@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { bridge } from "../api";
 import { store, useStoreSelector, type PopupInfo } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
-import { TERMINAL_FONT_FAMILY, terminalFontOptions } from "../appearance";
+import { terminalFontOptions } from "../appearance";
 import { isMobileLayout } from "../layoutPreferences";
 import { terminalPushMatches } from "../terminalConnection";
 import { terminalCellAt, terminalWheelScroll } from "../terminalScroll";
@@ -60,9 +60,11 @@ function cssSizeFrom(
  */
 export function PopupOverlay({
   terminalTheme,
+  terminalFontFamily,
   terminalFontScale,
 }: {
   terminalTheme: ITheme;
+  terminalFontFamily: string;
   terminalFontScale: number;
 }) {
   const popup = useStoreSelector((s) => s.popup);
@@ -110,7 +112,7 @@ export function PopupOverlay({
     // to tofu just because it renders here.
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: TERMINAL_FONT_FAMILY,
+      fontFamily: terminalFontFamily,
       ...terminalFontOptions(isMobileLayout(), terminalFontScale),
       theme: terminalTheme,
       allowProposedApi: true,
