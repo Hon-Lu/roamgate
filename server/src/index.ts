@@ -804,6 +804,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     listWorkspaceFiles,
     resolveWorkspaceFiles,
     readWorkspaceFile,
+    revealWorkspaceFile,
     readGitDiffSummary,
     readGitDiffFile,
     runGitPull,
@@ -908,6 +909,15 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       sendReply({ id, result }, "file-read");
     } catch (e) {
       sendError("file-read-error", e);
+    }
+    return;
+  }
+  if (method === "file.reveal") {
+    try {
+      const result = await revealWorkspaceFile(params ?? {}, ws.remoteAddress);
+      sendReply({ id, result }, "file-reveal");
+    } catch (e) {
+      sendError("file-reveal-error", e);
     }
     return;
   }
