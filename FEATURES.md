@@ -57,9 +57,11 @@ the first pane a jump can reach.
 - Paste images to upload them to the connected host and insert their paths.
   Local connections store them in a private `roamgate-images-*` folder under the
   OS temp directory, created per server process; SSH connections use the remote
-  `/tmp`. Inserted paths are absolute, use forward slashes on Windows, and are
-  quoted when they contain spaces or shell characters, so they work in Bash,
-  zsh, fish, PowerShell, and Git Bash.
+  `/tmp`. Inserted paths are absolute and quoted when needed. POSIX hosts use
+  POSIX shell quoting; Windows uses forward slashes and quoting for PowerShell
+  and common Git Bash paths. Windows paths containing an apostrophe together
+  with `$` or a backtick require PowerShell; that combination is not supported
+  in Git Bash. Windows `cmd.exe` built-ins are not supported by this path format.
   OSC 52 clipboard writes follow Herdr's foreground recipient, not proven source
   pane ownership; see [clipboard limits](docs/DEPLOYMENT.md#herdr-compatibility).
 - `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; file/directory paths,
@@ -185,6 +187,13 @@ after fetch, and abort conflicts. They never push.
 - Upload by dragging onto a checkout directory; download files or workspace
   `.tar.gz` directories; copy paths or delete with confirmation via right-click
   or long-press. Upload/delete stay checkout-scoped. Operations work over SSH.
+- With [host file reveal enabled](docs/DEPLOYMENT.md#host-file-reveal), local
+  profiles over loopback offer **Reveal on host** and **Open folder on host**
+  in explorer and Changes menus. These open the Roamgate host's desktop, not
+  necessarily the browser's: files are selected in Finder/File Explorer;
+  Linux opens their containing folder. Changes uses the nearest existing
+  ancestor for deleted paths, including removed directories. Disabled by
+  default; SSH profiles and non-loopback peers are refused.
 - Drag a file or folder from the tree with the mouse to insert its absolute path
   into the active terminal pane or the terminal composer.
 
@@ -256,10 +265,12 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   by default. **Background push** works without an active page; **Active page
   only** does not. Delivery is best-effort.
   [Web Push setup and revocation](docs/DEPLOYMENT.md#web-push-notifications).
-- Choose light/dark/system appearance, accents, built-in/custom terminal themes,
-  interface scale (80%–150%), and terminal font size (70%–200%), which scales
-  terminal text without resizing the rest of the interface. Preferences stay in
-  this browser.
+- Choose light/dark/system appearance, accents, and interface scale (80%–150%).
+  **Configuration > Appearance > Terminal** groups the terminal font, font size
+  (70%–200%, scaling terminal text without resizing the rest of the interface),
+  and built-in/custom terminal themes. The font can be any family installed on
+  the viewing device; Chromium browsers can list installed fonts, and missing
+  glyphs fall back to the default terminal fonts. Preferences stay in this browser.
 - **Configuration > Connection > Terminal incremental transport** saves a shared
   per-connection setting on the server. It reduces Herdr-to-Roamgate traffic,
   briefly reconnecting displays without stopping tasks; older servers retain

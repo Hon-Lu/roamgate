@@ -1,9 +1,8 @@
-// Formats an uploaded file path as text that can be pasted at a shell prompt
-// or into an agent prompt. Roamgate cannot tell which shell a pane runs, so
-// the result is chosen to read the same way in bash, zsh, fish, PowerShell,
-// and Git Bash. Paths made only of safe characters stay bare so agents that
-// detect image paths keep recognizing them.
-const SAFE_PATH = /^[A-Za-z0-9_\-.,/:@%+=]+$/;
+// Formats uploaded paths using host conventions, not detected shell syntax.
+// POSIX hosts use POSIX quoting; Windows covers PowerShell and common Git Bash
+// paths, with the PowerShell-only fallback below. Safe paths stay bare for
+// agent image detection. Commas need quotes in PowerShell argument mode.
+const SAFE_PATH = /^[A-Za-z0-9_\-./:@%+=]+$/;
 
 export function terminalPathText(path: string, platform: NodeJS.Platform) {
   if (platform === "win32") {
@@ -15,8 +14,8 @@ export function terminalPathText(path: string, platform: NodeJS.Platform) {
     // Windows paths cannot contain double quotes. Double quotes still expand
     // `$` in both shells and backticks in PowerShell.
     if (!/[$`]/.test(slashed)) return `"${slashed}"`;
-    // No quoting is literal in both shells here; prefer PowerShell, the
-    // Windows default.
+    // ponytail: this rare combination is PowerShell-only; broader support
+    // requires shell-aware formatting rather than guessing from the host OS.
     return `'${slashed.replaceAll("'", "''")}'`;
   }
   if (SAFE_PATH.test(path)) return path;
