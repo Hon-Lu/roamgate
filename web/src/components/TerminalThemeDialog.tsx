@@ -222,11 +222,9 @@ function TerminalFontPicker({
   const [loadingFonts, setLoadingFonts] = useState(false);
   const queryFonts = localFontQuery();
   const typedName = normalizeTerminalFontFamily(search);
-  const typedNameListed =
-    typedName.toLowerCase() === fontName.toLowerCase() ||
-    installedFonts?.some(
-      (family) => family.toLowerCase() === typedName.toLowerCase(),
-    );
+  const typedNameListed = installedFonts?.some(
+    (family) => family.toLowerCase() === typedName.toLowerCase(),
+  );
 
   const setPickerOpen = (next: boolean) => {
     setOpen(next);
