@@ -1235,6 +1235,8 @@ async function handleConnectionHttpRequest(
           path: url.searchParams.get("path"),
           scope: url.searchParams.get("scope"),
           inline: url.searchParams.get("inline") === "1",
+          range: req.headers.get("range") ?? undefined,
+          if_range: req.headers.get("if-range") ?? undefined,
         });
       } catch (error) {
         response = new Response((error as Error).message, { status: 400 });

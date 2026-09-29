@@ -1,5 +1,7 @@
 import { shortcutMatches } from "../shortcutPreferences";
 import {
+  audioMimeForPath,
+  AUDIO_INLINE_PREVIEW_MAX_BYTES,
   HTML_PREVIEW_MAX_BYTES,
   isHtmlPath,
 } from "../../../shared/filePreview";
@@ -241,6 +243,12 @@ export function FilePreviewContent({
   const hasPdfPreview = Boolean(preview && isPdfPath(previewPath));
   const pdfTooLarge =
     hasPdfPreview && (preview?.size ?? 0) > PDF_INLINE_PREVIEW_MAX_BYTES;
+  const hasAudioPreview = Boolean(
+    preview && preview.type !== "directory" && audioMimeForPath(previewPath),
+  );
+  const audioTooLarge =
+    hasAudioPreview && (preview?.size ?? 0) > AUDIO_INLINE_PREVIEW_MAX_BYTES;
+  const hasMediaPreview = hasPdfPreview || hasAudioPreview;
   const hasHtmlPreview =
     hasPreviewText &&
     !preview?.binary &&
@@ -635,11 +643,32 @@ export function FilePreviewContent({
               PDF is too large to preview. Use Download from the file menu.
             </div>
           ) : null}
+          {!loading && !error && audioTooLarge ? (
+            <div className="file-preview-state">
+              Audio is too large to preview (25 MiB maximum). Use Download from
+              the file menu.
+            </div>
+          ) : null}
+          {!loading &&
+          !error &&
+          hasAudioPreview &&
+          !audioTooLarge &&
+          inlinePreviewUrl ? (
+            <div className="file-preview-audio">
+              <audio
+                key={inlinePreviewUrl}
+                controls
+                preload="metadata"
+                src={inlinePreviewUrl}
+                aria-label={`Audio preview: ${entry?.name ?? previewPath}`}
+              />
+            </div>
+          ) : null}
           {!loading &&
           !error &&
           preview?.binary &&
           !preview.image_data_url &&
-          !hasPdfPreview ? (
+          !hasMediaPreview ? (
             <div className="file-preview-state">
               Binary file cannot be previewed.
             </div>
@@ -670,7 +699,7 @@ export function FilePreviewContent({
           {!loading &&
           !error &&
           preview?.truncated &&
-          !hasPdfPreview &&
+          !hasMediaPreview &&
           !(hasHtmlPreview && renderRichPreview) ? (
             <div className="file-preview-banner">
               Preview truncated at 512 KB.
@@ -700,7 +729,7 @@ export function FilePreviewContent({
           !error &&
           hasPreviewText &&
           !renderRichPreview &&
-          !hasPdfPreview ? (
+          !hasMediaPreview ? (
             <CodeMirrorPreview
               text={previewText}
               path={previewPath}
