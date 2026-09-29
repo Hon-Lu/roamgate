@@ -125,4 +125,11 @@ describe("adjacent tab selection", () => {
     expect(adjacentTabId(tabs, "missing", "previous")).toBe("third");
     expect(adjacentTabId([], undefined, "next")).toBeNull();
   });
+
+  test("follows the tab strip when pinned tabs lead it", () => {
+    const pinned = new Set(["third"]);
+    expect(adjacentTabId(tabs, "third", "next", pinned)).toBe("first");
+    expect(adjacentTabId(tabs, "second", "next", pinned)).toBe("third");
+    expect(adjacentTabId(tabs, "first", "previous", pinned)).toBe("third");
+  });
 });

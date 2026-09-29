@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-react";
+import { Pin, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -12,6 +12,7 @@ import { summarizeTabAgents } from "./agentSession";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import { requestCloseTab, tabName } from "./TabBar";
+import { orderTabsForDisplay, setTabPinned, useTabPins } from "../tabPins";
 import "./MobileTabSheet.css";
 
 /**
@@ -30,6 +31,7 @@ export function MobileTabSheet({
 }) {
   const s = useStoreSelector(
     (state) => ({
+      activeConnectionId: state.activeConnectionId,
       panes: state.panes,
       tabs: state.tabs,
       workspaces: state.workspaces,
@@ -60,15 +62,17 @@ export function MobileTabSheet({
     }
   };
 
+  const pinnedTabIds = useTabPins(s.activeConnectionId);
   const focusedWs = s.workspaces.find((w) => w.focused);
   const createReason = useEndpointCreationReason(
     "tab.create",
     focusedWs?.workspace_id,
   );
   const tabs = focusedWs
-    ? s.tabs
-        .filter((t) => t.workspace_id === focusedWs.workspace_id)
-        .sort((a, b) => a.number - b.number)
+    ? orderTabsForDisplay(
+        s.tabs.filter((t) => t.workspace_id === focusedWs.workspace_id),
+        pinnedTabIds,
+      )
     : [];
 
   useEffect(() => {
@@ -155,16 +159,31 @@ export function MobileTabSheet({
                   ) : null}
                   <span className="mobile-tab-sheet-name">{name}</span>
                 </button>
-                <button
-                  type="button"
-                  className="mobile-tab-sheet-close"
-                  aria-label={`Close ${name}`}
-                  title={`Close ${name}`}
-                  disabled={transitionPending}
-                  onClick={() => requestCloseTab(t.tab_id)}
-                >
-                  <X size={14} />
-                </button>
+                {pinnedTabIds.has(t.tab_id) ? (
+                  <button
+                    type="button"
+                    className="mobile-tab-sheet-close"
+                    aria-label={`Unpin ${name}`}
+                    title="Unpin tab"
+                    disabled={transitionPending}
+                    onClick={() =>
+                      setTabPinned(s.activeConnectionId, t.tab_id, false)
+                    }
+                  >
+                    <Pin size={13} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="mobile-tab-sheet-close"
+                    aria-label={`Close ${name}`}
+                    title={`Close ${name}`}
+                    disabled={transitionPending}
+                    onClick={() => requestCloseTab(t.tab_id)}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             );
           })}

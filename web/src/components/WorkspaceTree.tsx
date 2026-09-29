@@ -3,7 +3,6 @@ import { shallowEqual, store, useStoreSelector } from "../store";
 import type { GitStatusSummary, Pane, Workspace } from "../types";
 import { shortId } from "../utils";
 import {
-  clearTerminalComposerDrafts,
   terminalComposerCloseWarning,
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
@@ -809,7 +808,9 @@ export function WorkspaceTree({
         onExportSession={(pane) =>
           exportSessionForConnection(pane, connectionClient)
         }
-        onClosePane={setPendingClosePane}
+        onClosePane={(pane) => {
+          if (store.guardPaneClose(pane.pane_id)) setPendingClosePane(pane);
+        }}
       />
       <ConfirmDialog
         open={!!pendingClosePane}
@@ -830,11 +831,6 @@ export function WorkspaceTree({
         onClose={() => setPendingClosePane(null)}
         onConfirm={() => {
           if (pendingClosePane) {
-            clearTerminalComposerDrafts(
-              s.activeConnectionId,
-              s.connectionGeneration,
-              [pendingClosePane.pane_id],
-            );
             store.closePane(pendingClosePane.pane_id);
           }
         }}

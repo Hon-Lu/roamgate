@@ -30,6 +30,102 @@ import {
   worktreeRemovalCompletionNotice,
 } from "./store";
 import type { Pane } from "./types";
+import { __resetTabPinsForTests, setTabPinned } from "./tabPins";
+import {
+  activateTerminalComposerDraftScope,
+  readTerminalComposerDraft,
+  terminalComposerDraftKey,
+  writeTerminalComposerDraft,
+} from "./terminalComposer";
+
+describe("pinned close draft protection", () => {
+  test.each(["tab", "pane"] as const)(
+    "%s close preserves drafts until an allowed close succeeds",
+    async (kind) => {
+      const previousState = store.get();
+      const previousConnection = bridge.connection;
+      const previousStorage = globalThis.localStorage;
+      const snapshot = partitionState();
+      snapshot.connectionGeneration = kind === "tab" ? 2951 : 2952;
+      const target = snapshot.panes[0];
+      const key = terminalComposerDraftKey(
+        snapshot.activeConnectionId,
+        snapshot.connectionGeneration,
+        target.pane_id,
+      );
+      const calls: string[] = [];
+      let failClose = true;
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        value: { getItem: () => null, setItem: () => undefined },
+      });
+      bridge.connection = (connectionId = "alpha") => ({
+        connectionId,
+        generation: snapshot.connectionGeneration,
+        serverRuntimeGeneration: 1,
+        isCurrent: () => true,
+        acceptsServerGeneration: () => true,
+        call: async (method) => {
+          calls.push(method);
+          if (failClose) throw new Error("Close failed");
+          return {};
+        },
+      });
+      const close = () =>
+        kind === "tab"
+          ? store.closeTab(target.tab_id)
+          : store.closePane(target.pane_id);
+      try {
+        __resetTabPinsForTests();
+        __storeTesting.replaceState({
+          ...snapshot,
+          panes: [target, { ...target, pane_id: "sibling" }],
+        });
+        activateTerminalComposerDraftScope(
+          "alpha",
+          snapshot.connectionGeneration,
+        );
+        writeTerminalComposerDraft(key, "unsent draft");
+        if (kind === "pane") setTabPinned("alpha", target.tab_id, true);
+        expect(
+          kind === "tab"
+            ? store.guardTabClose(target.tab_id)
+            : store.guardPaneClose(target.pane_id),
+        ).toBe(true);
+
+        // The tab becomes protected while its close confirmation is open.
+        setTabPinned("alpha", target.tab_id, true);
+        __storeTesting.replaceState(snapshot);
+        await close();
+        expect(calls).toEqual([]);
+        expect(store.get().notice?.message).toBe("Tab is pinned");
+        expect(readTerminalComposerDraft(key)).toBe("unsent draft");
+        writeTerminalComposerDraft(key, "editable draft");
+        expect(readTerminalComposerDraft(key)).toBe("editable draft");
+
+        setTabPinned("alpha", target.tab_id, false);
+        await close();
+        expect(readTerminalComposerDraft(key)).toBe("editable draft");
+        failClose = false;
+        await close();
+        expect(calls).toEqual([`${kind}.close`, `${kind}.close`]);
+        expect(readTerminalComposerDraft(key)).toBe("");
+      } finally {
+        bridge.connection = previousConnection;
+        __storeTesting.replaceState(previousState);
+        activateTerminalComposerDraftScope(
+          previousState.activeConnectionId,
+          previousState.connectionGeneration,
+        );
+        Object.defineProperty(globalThis, "localStorage", {
+          configurable: true,
+          value: previousStorage,
+        });
+        __resetTabPinsForTests();
+      }
+    },
+  );
+});
 
 describe("automatic update check preference", () => {
   test("defaults to enabled and honors an explicit disabled value", () => {

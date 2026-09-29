@@ -13,6 +13,13 @@ export {
   type TaskNotificationTarget,
 } from "./taskNotifications";
 import { withAgentActivity } from "./agentOrder";
+import { clearTerminalComposerDrafts } from "./terminalComposer";
+import {
+  forgetClosedTabPins,
+  paneCloseBlockReason,
+  tabCloseBlockReason,
+  tabPinsFor,
+} from "./tabPins";
 import {
   type EndpointAvailability,
   parseEndpointAdvertisement,
@@ -1281,6 +1288,8 @@ async function refreshNow(lease = captureConnectionLease()) {
       liveTabIds,
     );
     forgetTabLayoutsExcept(lease.connectionId, lease.generation, liveTabIds);
+    // Tabs closed elsewhere, such as in the Herdr TUI, leave stale pins.
+    forgetClosedTabPins(lease.connectionId, liveTabIds);
     const completedPanes = trackTaskCompletions(lease.connectionId, panes);
 
     const navigationMode =
@@ -2200,6 +2209,17 @@ function adoptBrowserTarget(lease: StoreConnectionLease, result: unknown) {
   });
 }
 
+function notifyPinnedTabClose(reason: string) {
+  set({
+    notice: {
+      kind: "info",
+      message: "Tab is pinned",
+      detail: reason,
+      autoDismissMs: 4000,
+    },
+  });
+}
+
 export const store = {
   setTerminalEndpoint(
     client: ConnectionClient,
@@ -2558,8 +2578,43 @@ export const store = {
     );
   },
 
+  /** Returns false and explains why when a pin protects the tab. */
+  guardTabClose(tabId: string) {
+    const reason = tabCloseBlockReason(
+      tabId,
+      tabPinsFor(state.activeConnectionId),
+    );
+    if (!reason) return true;
+    notifyPinnedTabClose(reason);
+    return false;
+  },
+
+  /** Returns false and explains why when the pane is a pinned tab's last. */
+  guardPaneClose(paneId: string) {
+    const reason = paneCloseBlockReason(
+      paneId,
+      state.panes,
+      tabPinsFor(state.activeConnectionId),
+    );
+    if (!reason) return true;
+    notifyPinnedTabClose(reason);
+    return false;
+  },
+
   closeTab(tabId: string) {
-    return action((lease) => lease.client.call("tab.close", { tab_id: tabId }));
+    if (!store.guardTabClose(tabId)) return Promise.resolve();
+    const paneIds = state.panes
+      .filter((pane) => pane.tab_id === tabId)
+      .map((pane) => pane.pane_id);
+    return action(async (lease) => {
+      const result = await lease.client.call("tab.close", { tab_id: tabId });
+      clearTerminalComposerDrafts(
+        lease.connectionId,
+        lease.generation,
+        paneIds,
+      );
+      return result;
+    });
   },
 
   renameTab(tabId: string, label: string) {
@@ -3678,9 +3733,14 @@ export const store = {
   },
 
   closePane(paneId: string) {
-    return action((lease) =>
-      lease.client.call("pane.close", { pane_id: paneId }),
-    );
+    if (!store.guardPaneClose(paneId)) return Promise.resolve();
+    return action(async (lease) => {
+      const result = await lease.client.call("pane.close", { pane_id: paneId });
+      clearTerminalComposerDrafts(lease.connectionId, lease.generation, [
+        paneId,
+      ]);
+      return result;
+    });
   },
 };
 

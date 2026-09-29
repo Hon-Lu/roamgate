@@ -72,7 +72,6 @@ import {
   decodeTerminalClipboard,
 } from "../terminalClipboard";
 import {
-  clearTerminalComposerDrafts,
   terminalComposerCloseWarning,
   terminalComposerDraftKey,
   terminalComposerDraftPaneIds,
@@ -3543,11 +3542,6 @@ export function TerminalView({
         danger
         onClose={() => setClosePaneRequested(false)}
         onConfirm={() => {
-          clearTerminalComposerDrafts(
-            s.activeConnectionId,
-            s.connectionGeneration,
-            [pane.pane_id],
-          );
           store.closePane(pane.pane_id);
         }}
       />

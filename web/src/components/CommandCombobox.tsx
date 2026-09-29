@@ -749,7 +749,10 @@ export function CommandCombobox({
         detail: tabName(activeTab),
         keywords: ["delete tab", "remove tab"],
         danger: true,
-        run: () => setPendingCloseTab(activeTab),
+        run: () => {
+          if (store.guardTabClose(activeTab.tab_id))
+            setPendingCloseTab(activeTab);
+        },
       },
     );
   }
@@ -773,7 +776,9 @@ export function CommandCombobox({
       detail: tab.tab_id,
       keywords: ["delete tab", "remove tab", tabName(tab)],
       danger: true,
-      run: () => setPendingCloseTab(tab),
+      run: () => {
+        if (store.guardTabClose(tab.tab_id)) setPendingCloseTab(tab);
+      },
     });
   }
 
@@ -851,7 +856,11 @@ export function CommandCombobox({
           detail: shortId(activePane.pane_id),
           keywords: ["delete pane", "remove pane"],
           danger: true,
-          run: () => setPendingClosePane(activePane),
+          run: () => {
+            if (store.guardPaneClose(activePane.pane_id)) {
+              setPendingClosePane(activePane);
+            }
+          },
         },
       ]
     : [];
@@ -865,7 +874,11 @@ export function CommandCombobox({
       detail: agentName(activeAgent),
       keywords: ["close agent", "delete agent", "remove agent", "close pane"],
       danger: true,
-      run: () => setPendingClosePane(activeAgent),
+      run: () => {
+        if (store.guardPaneClose(activeAgent.pane_id)) {
+          setPendingClosePane(activeAgent);
+        }
+      },
     });
   }
   for (const pane of agents) {
@@ -1122,11 +1135,6 @@ export function CommandCombobox({
         onClose={() => setPendingCloseTab(null)}
         onConfirm={() => {
           if (pendingCloseTab) {
-            clearComposerDraftsFor(
-              s.panes
-                .filter((pane) => pane.tab_id === pendingCloseTab.tab_id)
-                .map((pane) => pane.pane_id),
-            );
             store.closeTab(pendingCloseTab.tab_id);
           }
         }}
@@ -1146,7 +1154,6 @@ export function CommandCombobox({
         onClose={() => setPendingClosePane(null)}
         onConfirm={() => {
           if (pendingClosePane) {
-            clearComposerDraftsFor([pendingClosePane.pane_id]);
             store.closePane(pendingClosePane.pane_id);
           }
         }}
