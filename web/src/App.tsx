@@ -152,6 +152,7 @@ import {
   closeShortcutTarget,
   tabShortcutAction,
 } from "./tabShortcuts";
+import { tabPinsFor } from "./tabPins";
 import { copyTextFromUserGesture } from "./terminalClipboard";
 import { terminalPasteRequest } from "./terminalPaste";
 import {
@@ -3001,7 +3002,12 @@ export default function App() {
           return;
         }
 
-        const targetTabId = adjacentTabId(tabs, activeTabId, tabAction);
+        const targetTabId = adjacentTabId(
+          tabs,
+          activeTabId,
+          tabAction,
+          tabPinsFor(current.activeConnectionId),
+        );
         if (!targetTabId || targetTabId === activeTabId) return;
         store.focusTab(targetTabId);
         return;

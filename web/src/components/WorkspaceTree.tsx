@@ -809,7 +809,9 @@ export function WorkspaceTree({
         onExportSession={(pane) =>
           exportSessionForConnection(pane, connectionClient)
         }
-        onClosePane={setPendingClosePane}
+        onClosePane={(pane) => {
+          if (store.guardPaneClose(pane.pane_id)) setPendingClosePane(pane);
+        }}
       />
       <ConfirmDialog
         open={!!pendingClosePane}

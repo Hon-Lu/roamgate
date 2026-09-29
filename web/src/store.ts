@@ -14,6 +14,12 @@ export {
 } from "./taskNotifications";
 import { withAgentActivity } from "./agentOrder";
 import {
+  forgetClosedTabPins,
+  paneCloseBlockReason,
+  tabCloseBlockReason,
+  tabPinsFor,
+} from "./tabPins";
+import {
   type EndpointAvailability,
   parseEndpointAdvertisement,
   parseEndpointAvailability,
@@ -1281,6 +1287,8 @@ async function refreshNow(lease = captureConnectionLease()) {
       liveTabIds,
     );
     forgetTabLayoutsExcept(lease.connectionId, lease.generation, liveTabIds);
+    // Tabs closed elsewhere, such as in the Herdr TUI, leave stale pins.
+    forgetClosedTabPins(lease.connectionId, liveTabIds);
     const completedPanes = trackTaskCompletions(lease.connectionId, panes);
 
     const navigationMode =
@@ -2200,6 +2208,17 @@ function adoptBrowserTarget(lease: StoreConnectionLease, result: unknown) {
   });
 }
 
+function notifyPinnedTabClose(reason: string) {
+  set({
+    notice: {
+      kind: "info",
+      message: "Tab is pinned",
+      detail: reason,
+      autoDismissMs: 4000,
+    },
+  });
+}
+
 export const store = {
   setTerminalEndpoint(
     client: ConnectionClient,
@@ -2558,7 +2577,31 @@ export const store = {
     );
   },
 
+  /** Returns false and explains why when a pin protects the tab. */
+  guardTabClose(tabId: string) {
+    const reason = tabCloseBlockReason(
+      tabId,
+      tabPinsFor(state.activeConnectionId),
+    );
+    if (!reason) return true;
+    notifyPinnedTabClose(reason);
+    return false;
+  },
+
+  /** Returns false and explains why when the pane is a pinned tab's last. */
+  guardPaneClose(paneId: string) {
+    const reason = paneCloseBlockReason(
+      paneId,
+      state.panes,
+      tabPinsFor(state.activeConnectionId),
+    );
+    if (!reason) return true;
+    notifyPinnedTabClose(reason);
+    return false;
+  },
+
   closeTab(tabId: string) {
+    if (!store.guardTabClose(tabId)) return Promise.resolve();
     return action((lease) => lease.client.call("tab.close", { tab_id: tabId }));
   },
 
@@ -3678,6 +3721,7 @@ export const store = {
   },
 
   closePane(paneId: string) {
+    if (!store.guardPaneClose(paneId)) return Promise.resolve();
     return action((lease) =>
       lease.client.call("pane.close", { pane_id: paneId }),
     );

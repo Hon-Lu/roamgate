@@ -7,8 +7,14 @@ import {
 } from "../store";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MessageSquareText, PanelRight } from "lucide-react";
+import { MessageSquareText, PanelRight, Pin } from "lucide-react";
 import type { Tab } from "../types";
+import {
+  orderTabsForDisplay,
+  PINNED_TAB_CLOSE_REASON,
+  setTabPinned,
+  useTabPins,
+} from "../tabPins";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
 import {
@@ -93,14 +99,16 @@ export function TabBar({
   );
   const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
+  const pinnedTabIds = useTabPins(s.activeConnectionId);
   const focusedWs = s.workspaces.find((w) => w.focused);
   const createReason = useEndpointCreationReason(
     "tab.create",
     focusedWs?.workspace_id,
   );
-  const tabs = s.tabs
-    .filter((t) => t.workspace_id === focusedWs?.workspace_id)
-    .sort((a, b) => a.number - b.number);
+  const tabs = orderTabsForDisplay(
+    s.tabs.filter((t) => t.workspace_id === focusedWs?.workspace_id),
+    pinnedTabIds,
+  );
   const pendingCloseTab = s.tabs.find((t) => t.tab_id === pendingCloseTabId);
   const pendingCloseTabName = tabName(pendingCloseTab);
   const pendingCloseTabPaneIds = s.panes
@@ -135,12 +143,20 @@ export function TabBar({
   useEffect(() => {
     const onRequestClose = (event: Event) => {
       const tabId = (event as CustomEvent<{ tabId?: unknown }>).detail?.tabId;
-      if (typeof tabId === "string" && tabId) setPendingCloseTabId(tabId);
+      if (typeof tabId === "string" && tabId && store.guardTabClose(tabId)) {
+        setPendingCloseTabId(tabId);
+      }
     };
     const onRequestClosePane = (event: Event) => {
       const paneId = (event as CustomEvent<{ paneId?: unknown }>).detail
         ?.paneId;
-      if (typeof paneId === "string" && paneId) setPendingClosePaneId(paneId);
+      if (
+        typeof paneId === "string" &&
+        paneId &&
+        store.guardPaneClose(paneId)
+      ) {
+        setPendingClosePaneId(paneId);
+      }
     };
     window.addEventListener(REQUEST_CLOSE_TAB_EVENT, onRequestClose);
     window.addEventListener(REQUEST_CLOSE_PANE_EVENT, onRequestClosePane);
@@ -156,11 +172,15 @@ export function TabBar({
     <>
       <TabContextMenu
         state={menu}
+        pinned={!!menu && pinnedTabIds.has(menu.tab.tab_id)}
         onClose={() => setMenu(null)}
         onFocus={(tab) => {
           store.focusTab(tab.tab_id);
         }}
         onRename={(tab) => setPendingRenameTab(tab)}
+        onTogglePin={(tab, pinned) =>
+          setTabPinned(s.activeConnectionId, tab.tab_id, pinned)
+        }
         onCloseTab={(tab) => setPendingCloseTabId(tab.tab_id)}
         createReason={createReason}
         onCreateTab={() => {
@@ -234,10 +254,13 @@ export function TabBar({
                 ? t.label
                 : `Tab ${t.number}`;
             const agentSummary = summarizeTabAgents(s.panes, t.tab_id);
+            const pinned = pinnedTabIds.has(t.tab_id);
             return (
               <div
                 key={t.tab_id}
-                className={`tabbar-tab ${t.focused ? "is-active" : ""}`}
+                className={`tabbar-tab ${t.focused ? "is-active" : ""} ${
+                  pinned ? "is-pinned" : ""
+                }`}
                 onClick={() => {
                   store.focusTab(t.tab_id);
                 }}
@@ -276,16 +299,25 @@ export function TabBar({
                 >
                   <span className="tabbar-name">{name}</span>
                 </TabLongPressTarget>
-                <button
-                  className="tabbar-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPendingCloseTabId(t.tab_id);
-                  }}
-                  title="Close tab"
-                >
-                  ×
-                </button>
+                {pinned ? (
+                  <Pin
+                    className="tabbar-pin"
+                    size={11}
+                    fill="currentColor"
+                    aria-label="Pinned"
+                  />
+                ) : (
+                  <button
+                    className="tabbar-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPendingCloseTabId(t.tab_id);
+                    }}
+                    title="Close tab"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             );
           })}
@@ -406,17 +438,21 @@ function TabLongPressTarget({
 
 function TabContextMenu({
   state,
+  pinned,
   onClose,
   onFocus,
   onRename,
+  onTogglePin,
   onCloseTab,
   onCreateTab,
   createReason,
 }: {
   state: TabMenuState | null;
+  pinned: boolean;
   onClose: () => void;
   onFocus: (tab: Tab) => void;
   onRename: (tab: Tab) => void;
+  onTogglePin: (tab: Tab, pinned: boolean) => void;
   onCloseTab: (tab: Tab) => void;
   onCreateTab: () => void;
   createReason: string | null;
@@ -450,11 +486,16 @@ function TabContextMenu({
   const items = [
     { label: "Focus tab", action: () => onFocus(state.tab) },
     { label: "Rename tab...", action: () => onRename(state.tab) },
+    {
+      label: pinned ? "Unpin tab" : "Pin tab",
+      action: () => onTogglePin(state.tab, !pinned),
+    },
     { label: "Create tab", action: onCreateTab, reason: createReason },
     {
       label: "Close tab",
       danger: true,
       action: () => onCloseTab(state.tab),
+      reason: pinned ? PINNED_TAB_CLOSE_REASON : null,
     },
   ];
   const menuMargin = 8;
