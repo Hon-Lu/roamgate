@@ -121,10 +121,14 @@ function writeTabPins(connectionId: string, tabIds: readonly string[]) {
     return;
   }
   pinsByConnection.set(connectionId, new Set(tabIds));
-  roamgateLocalStorage.setItem(
-    storageKey(connectionId),
-    serializeTabPins(tabIds),
-  );
+  try {
+    roamgateLocalStorage.setItem(
+      storageKey(connectionId),
+      serializeTabPins(tabIds),
+    );
+  } catch {
+    // Keep pins usable in memory when browser storage is unavailable.
+  }
   notify();
 }
 

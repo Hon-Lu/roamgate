@@ -139,4 +139,19 @@ describe("tab pin state", () => {
     forgetClosedTabPins("alpha", new Set());
     expect([...tabPinsFor("alpha")]).toEqual(["w1:t1"]);
   });
+
+  test("keeps pin changes and pruning usable when storage writes fail", () => {
+    localStorage.setItem = () => {
+      throw new DOMException("Storage full", "QuotaExceededError");
+    };
+    expect(() => setTabPinned("alpha", "w1:t1", true)).not.toThrow();
+    expect(tabPinsFor("alpha").has("w1:t1")).toBe(true);
+    expect(() => setTabPinned("alpha", "w1:t1", false)).not.toThrow();
+    expect(tabPinsFor("alpha").size).toBe(0);
+    setTabPinned("alpha", "w1:t1", true);
+    expect(() =>
+      forgetClosedTabPins("alpha", new Set(["w1:t2"])),
+    ).not.toThrow();
+    expect(tabPinsFor("alpha").size).toBe(0);
+  });
 });

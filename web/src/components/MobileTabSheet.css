@@ -88,12 +88,6 @@
     color: var(--muted);
   }
 
-  .mobile-tab-sheet-pin {
-    width: 34px;
-    flex: 0 0 auto;
-    color: var(--muted);
-  }
-
   .mobile-tab-sheet-new {
     flex: 0 0 auto;
     display: inline-flex;

@@ -1135,11 +1135,6 @@ export function CommandCombobox({
         onClose={() => setPendingCloseTab(null)}
         onConfirm={() => {
           if (pendingCloseTab) {
-            clearComposerDraftsFor(
-              s.panes
-                .filter((pane) => pane.tab_id === pendingCloseTab.tab_id)
-                .map((pane) => pane.pane_id),
-            );
             store.closeTab(pendingCloseTab.tab_id);
           }
         }}
@@ -1159,7 +1154,6 @@ export function CommandCombobox({
         onClose={() => setPendingClosePane(null)}
         onConfirm={() => {
           if (pendingClosePane) {
-            clearComposerDraftsFor([pendingClosePane.pane_id]);
             store.closePane(pendingClosePane.pane_id);
           }
         }}

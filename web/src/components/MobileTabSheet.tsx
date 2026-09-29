@@ -12,7 +12,7 @@ import { summarizeTabAgents } from "./agentSession";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import { requestCloseTab, tabName } from "./TabBar";
-import { orderTabsForDisplay, useTabPins } from "../tabPins";
+import { orderTabsForDisplay, setTabPinned, useTabPins } from "../tabPins";
 import "./MobileTabSheet.css";
 
 /**
@@ -160,12 +160,18 @@ export function MobileTabSheet({
                   <span className="mobile-tab-sheet-name">{name}</span>
                 </button>
                 {pinnedTabIds.has(t.tab_id) ? (
-                  <Pin
-                    className="mobile-tab-sheet-pin"
-                    size={13}
-                    fill="currentColor"
-                    aria-label="Pinned"
-                  />
+                  <button
+                    type="button"
+                    className="mobile-tab-sheet-close"
+                    aria-label={`Unpin ${name}`}
+                    title="Unpin tab"
+                    disabled={transitionPending}
+                    onClick={() =>
+                      setTabPinned(s.activeConnectionId, t.tab_id, false)
+                    }
+                  >
+                    <Pin size={13} fill="currentColor" />
+                  </button>
                 ) : (
                   <button
                     type="button"

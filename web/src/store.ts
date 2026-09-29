@@ -13,6 +13,7 @@ export {
   type TaskNotificationTarget,
 } from "./taskNotifications";
 import { withAgentActivity } from "./agentOrder";
+import { clearTerminalComposerDrafts } from "./terminalComposer";
 import {
   forgetClosedTabPins,
   paneCloseBlockReason,
@@ -2602,7 +2603,18 @@ export const store = {
 
   closeTab(tabId: string) {
     if (!store.guardTabClose(tabId)) return Promise.resolve();
-    return action((lease) => lease.client.call("tab.close", { tab_id: tabId }));
+    const paneIds = state.panes
+      .filter((pane) => pane.tab_id === tabId)
+      .map((pane) => pane.pane_id);
+    return action(async (lease) => {
+      const result = await lease.client.call("tab.close", { tab_id: tabId });
+      clearTerminalComposerDrafts(
+        lease.connectionId,
+        lease.generation,
+        paneIds,
+      );
+      return result;
+    });
   },
 
   renameTab(tabId: string, label: string) {
@@ -3722,9 +3734,13 @@ export const store = {
 
   closePane(paneId: string) {
     if (!store.guardPaneClose(paneId)) return Promise.resolve();
-    return action((lease) =>
-      lease.client.call("pane.close", { pane_id: paneId }),
-    );
+    return action(async (lease) => {
+      const result = await lease.client.call("pane.close", { pane_id: paneId });
+      clearTerminalComposerDrafts(lease.connectionId, lease.generation, [
+        paneId,
+      ]);
+      return result;
+    });
   },
 };
 

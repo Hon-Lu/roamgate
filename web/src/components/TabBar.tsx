@@ -18,7 +18,6 @@ import {
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
 import {
-  clearTerminalComposerDrafts,
   terminalComposerCloseWarning,
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
@@ -200,11 +199,6 @@ export function TabBar({
         onClose={() => setPendingCloseTabId(null)}
         onConfirm={() => {
           if (pendingCloseTabId) {
-            clearTerminalComposerDrafts(
-              s.activeConnectionId,
-              s.connectionGeneration,
-              pendingCloseTabPaneIds,
-            );
             store.closeTab(pendingCloseTabId);
           }
         }}
@@ -218,11 +212,6 @@ export function TabBar({
         onClose={() => setPendingClosePaneId(null)}
         onConfirm={() => {
           if (!pendingClosePane) return;
-          clearTerminalComposerDrafts(
-            s.activeConnectionId,
-            s.connectionGeneration,
-            [pendingClosePane.pane_id],
-          );
           store.closePane(pendingClosePane.pane_id);
         }}
       />
