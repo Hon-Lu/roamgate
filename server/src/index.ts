@@ -81,6 +81,10 @@ import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
 import { createAuthHandlers, unauthenticatedLoginRedirect } from "./http/auth";
 import { serveStatic } from "./http/static-files";
 import {
+  TERMINAL_UPLOAD_TIMEOUT_MS,
+  terminalUploadRequestBodyLimit,
+} from "./http/terminal-upload";
+import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
 } from "./http/update";
@@ -1269,6 +1273,11 @@ async function handleConnectionHttpRequest(
       response = await connection.handleHerdrInfo();
     } else if (endpoint === "upload-image") {
       response = await connection.handleImageUpload(req);
+    } else if (endpoint === "terminal-upload") {
+      response = await connection.handleTerminalUpload(
+        req,
+        url.searchParams.get("filename"),
+      );
     } else if (endpoint === "agent-session-download") {
       response = await connection.agentSessions.downloadFile({
         pane_id: url.searchParams.get("pane_id"),
@@ -1339,6 +1348,7 @@ function main() {
         port: config.port,
         hostname: config.host,
         tls: config.tls,
+        maxRequestBodySize: terminalUploadRequestBodyLimit(),
         async fetch(req, server) {
           const requestPathname = rawRequestPathname(req.url);
           let url: URL;
@@ -1432,6 +1442,12 @@ function main() {
             req.method,
           );
           if (connectionRoute) {
+            if (
+              connectionRoute.kind === "connection" &&
+              connectionRoute.endpoint === "terminal-upload"
+            ) {
+              server.timeout(req, TERMINAL_UPLOAD_TIMEOUT_MS / 1000);
+            }
             if (
               connectionRoute.kind === "connection" &&
               connectionRoute.endpoint === "file-download" &&
