@@ -280,6 +280,17 @@ separate for desktop/mobile. Jump from a diff to its file preview.
 - Customize the floating `2×8` grid and up to four side buttons under
   **Configuration > Behavior > Mobile terminal shortcuts**. The Tabs sheet and
   pane controls work when the tab strip is hidden.
+  Choose **Preset** or **Custom keyboard**. The US keyboard lets you toggle Ctrl,
+  Alt, and Shift and pick one letter, number, symbol, or basic key; expand **More keys**
+  for navigation keys and F1-F12 in separate groups. Set a label and edit or clear individual slots;
+  defaults stay available. Buttons send only that combination, with no extra
+  Enter. Shift uses US symbols; Ctrl letters ignore case and can share bytes with
+  other keys, while Alt sends an Escape prefix. Modified Enter requires application
+  support. Custom PageUp/PageDown sends application input; the presets scroll
+  history. Unsupported combinations, such as Ctrl+1, identify the affected slot
+  and block saving. Buttons bypass browser keyboard
+  shortcuts, but application keybindings still apply. Cmd/Meta, text macros,
+  commands, and multi-step sequences are not supported.
 - Drag the `⋯` controls button to move the floating controls; release snaps
   them to the nearer side edge at that height, mirrored on the left. The
   position is kept per browser and stays clear of the header and tab strip.
