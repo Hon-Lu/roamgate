@@ -146,6 +146,7 @@ export function FileExplorerPanel({
   keyboardActive = false,
   onClose,
   onPreviewChange,
+  onPinFileTab,
   onActiveDiffEntriesChange,
 }: {
   open: boolean;
@@ -160,6 +161,7 @@ export function FileExplorerPanel({
     selection: ActiveFilePreviewSelection,
     meta?: FilePreviewSelectionMeta,
   ) => void;
+  onPinFileTab?: (path: string) => void;
   onActiveDiffEntriesChange?: (entries: GitDiffEntry[]) => void;
 }) {
   if (!open) return null;
@@ -178,6 +180,7 @@ export function FileExplorerPanel({
         previewRequestRef={previewRequestRef}
         keyboardActive={keyboardActive}
         onPreviewChange={onPreviewChange}
+        onPinFileTab={onPinFileTab}
         onActiveDiffEntriesChange={onActiveDiffEntriesChange}
       />
     </aside>
@@ -343,6 +346,7 @@ function FileExplorerContent({
   activePath,
   keyboardActive = false,
   onPreviewChange,
+  onPinFileTab,
   onActiveDiffEntriesChange,
 }: {
   open: boolean;
@@ -359,6 +363,7 @@ function FileExplorerContent({
     selection: ActiveFilePreviewSelection,
     meta?: FilePreviewSelectionMeta,
   ) => void;
+  onPinFileTab?: (path: string) => void;
   onActiveDiffEntriesChange?: (entries: GitDiffEntry[]) => void;
 }) {
   const workspaces = useStoreSelector((state) => state.workspaces);
@@ -403,6 +408,8 @@ function FileExplorerContent({
   const [previewEntry, setPreviewEntry] = useState<FileExplorerEntry | null>(
     null,
   );
+  const previewEntryRef = useRef(previewEntry);
+  previewEntryRef.current = previewEntry;
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -1200,7 +1207,7 @@ function FileExplorerContent({
 
   const clearDeletedPreview = (entry: FileExplorerEntry) => {
     if (!workspace?.workspace_id) return;
-    const selectedPath = previewEntry?.path;
+    const selectedPath = previewEntryRef.current?.path;
     const deletedSelection =
       selectedPath === entry.path ||
       (entry.type === "directory" &&
@@ -1211,15 +1218,16 @@ function FileExplorerContent({
       entry.path,
       entry.type === "directory",
     );
-    if (!deletedSelection) return;
-    navigationRequestRef.current += 1;
-    setPreviewEntry(null);
-    setPreview(null);
-    setPreviewLoading(false);
-    setPreviewError(null);
+    if (deletedSelection) {
+      navigationRequestRef.current += 1;
+      setPreviewEntry(null);
+      setPreview(null);
+      setPreviewLoading(false);
+      setPreviewError(null);
+    }
     emitPreviewChange(
       { entry: null, preview: null, loading: false, error: null },
-      { userInitiated: true },
+      { userInitiated: true, deletedEntry: entry },
     );
   };
 
@@ -1582,6 +1590,16 @@ function FileExplorerContent({
             }
             activateEntry(entry);
           }}
+          onDoubleClick={(event) => {
+            if (
+              entry.type !== "directory" &&
+              !(
+                event.target instanceof Element &&
+                event.target.closest("button")
+              )
+            )
+              onPinFileTab?.(entry.path);
+          }}
         >
           <button
             type="button"
@@ -1764,6 +1782,7 @@ function FileExplorerContent({
               onSelect={(entry) => {
                 void loadPreview(entry);
               }}
+              onPinFile={onPinFileTab}
               onMenu={openEntryMenu}
               onExit={() => {
                 setEntryMenu(null);

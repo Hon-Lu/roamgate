@@ -92,6 +92,14 @@ keyboard shortcuts, or workspace/agent menus.
   the originating tab if it still exists.
 - Agent browsing starts at its cwd only inside the checkout. Terminal links use
   their pane's workspace. Changes describe the checkout, not agent ownership.
+- Single-clicking a file opens a temporary preview tab; the next single-click
+  reuses it. Double-click a file or its tab name to keep it open, or press Enter
+  on the focused preview tab. Reopening Inspector or reloading restores the open
+  files and active tab per connection and checkout. Reopening a file focuses its
+  existing tab; identical filenames show their parent paths. Tabs scroll
+  horizontally on compact layouts. Use Left/Right, Home/End on a focused file tab
+  to switch, and Delete, middle-click, or the close button to close it. Unfinished
+  review comments stay attached to their file when switching tabs.
 - Files searches names/paths or text across the selected checkout, including
   unopened directories. Content results open the preview at the matching line.
   Git ignore rules and binary files are respected; results stop at 100.

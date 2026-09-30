@@ -39,6 +39,9 @@ import {
   resourceOwnerKey,
   resourceStateKey,
   writeInspectorNavigationRatio,
+  readResourceFileTabs,
+  writeResourceFileTabs,
+  closeResourceFileTab,
   type InspectorDock,
   type InspectorSplitView,
   type InspectorView,
@@ -57,6 +60,7 @@ import {
   type ActiveFilePreviewSelection,
   FilePreviewContent,
 } from "./FilePreviewContent";
+import { FilePreviewTabs } from "./FilePreviewTabs";
 import { workspaceInspectorLayout } from "./workspaceInspectorLayout";
 import { PullRequestCard } from "./PullRequestCard";
 import "./WorkspaceInspectorHost.css";
@@ -205,6 +209,7 @@ export function WorkspaceInspectorHost({
   workspace,
   historyPane,
   fileSelection,
+  onSelectFileTab,
   previewRequestRef,
   diffSelection,
   connectionClient,
@@ -230,6 +235,7 @@ export function WorkspaceInspectorHost({
   workspace?: Workspace;
   historyPane?: Pane;
   fileSelection: ActiveFilePreviewSelection;
+  onSelectFileTab: (path: string) => void;
   previewRequestRef: React.MutableRefObject<number>;
   diffSelection: ActiveDiffSelection;
   connectionClient: ConnectionClient;
@@ -256,6 +262,42 @@ export function WorkspaceInspectorHost({
   onBack: () => void;
 }) {
   const hostRef = useRef<HTMLElement | null>(null);
+  const [fileTabs, setFileTabs] = useState(() =>
+    readResourceFileTabs(roamgateLocalStorage, state.scope),
+  );
+  useLayoutEffect(() => {
+    setFileTabs(readResourceFileTabs(roamgateLocalStorage, state.scope));
+  }, [fileSelection.entry?.path, state.scope]);
+  // A scope can first open on Changes or History. Restore its active file when
+  // entering Files, without requiring another explorer selection.
+  useEffect(() => {
+    if (state.view === "files" && !fileSelection.entry && fileTabs.activePath)
+      onSelectFileTab(fileTabs.activePath);
+  }, [state.view, fileSelection.entry, fileTabs.activePath, onSelectFileTab]);
+  const onCloseFileTab = (path: string, directory = false) => {
+    const current = readResourceFileTabs(roamgateLocalStorage, state.scope);
+    const tabs = closeResourceFileTab(current, path, directory);
+    writeResourceFileTabs(roamgateLocalStorage, state.scope, tabs);
+    setFileTabs(tabs);
+    if (current.activePath === tabs.activePath) return;
+    previewRequestRef.current += 1;
+    if (tabs.activePath) onSelectFileTab(tabs.activePath);
+    else
+      onFileSelectionChange?.({
+        entry: null,
+        preview: null,
+        loading: false,
+        error: null,
+      });
+  };
+  const onPinFileTab = (path: string) => {
+    const current = readResourceFileTabs(roamgateLocalStorage, state.scope);
+    if (current.previewPath !== path) return;
+    const tabs = { ...current, previewPath: null };
+    writeResourceFileTabs(roamgateLocalStorage, state.scope, tabs);
+    setFileTabs(tabs);
+  };
+
   useLayoutEffect(() => {
     onReady?.();
   }, [onReady]);
@@ -273,7 +315,10 @@ export function WorkspaceInspectorHost({
   const [drillInByView, setDrillInByView] = useState<
     Record<InspectorView, boolean>
   >(() => ({
-    files: state.view === "files" && !!fileSelection.entry,
+    files:
+      state.view === "files" &&
+      state.initialDirectory === undefined &&
+      !!fileSelection.entry,
     changes: false,
     commits: false,
     history: false,
@@ -383,19 +428,17 @@ export function WorkspaceInspectorHost({
     .join("|");
 
   useEffect(() => {
-    if (state.view !== "files" || !fileSelection.entry) return;
-    setDrillInByView((current) => ({ ...current, files: true }));
-  }, [fileSelection.entry, state.view]);
-
-  const closeFilePreview = () => {
-    setDrillInByView((current) => ({ ...current, files: false }));
-    onBack();
-    hostRef.current
-      ?.querySelector<HTMLElement>(
-        ".inspector-files-resource .file-row[role='treeitem'][tabindex='0']",
-      )
-      ?.focus({ preventScroll: true });
-  };
+    if (state.view !== "files") return;
+    if (state.initialDirectory !== undefined) {
+      // Explicit directory navigation returns compact layouts to the tree,
+      // while the saved preview and tabs remain available on desktop.
+      if (!fileSelection.entry)
+        setDrillInByView((current) => ({ ...current, files: false }));
+      return;
+    }
+    if (fileSelection.entry)
+      setDrillInByView((current) => ({ ...current, files: true }));
+  }, [fileSelection.entry, state.view, state.initialDirectory]);
 
   const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key === "ArrowDown" && state.view === "files") {
@@ -639,6 +682,13 @@ export function WorkspaceInspectorHost({
                 }
                 onClose={onClose}
                 onPreviewChange={(selection, meta) => {
+                  if (meta?.deletedEntry) {
+                    onCloseFileTab(
+                      meta.deletedEntry.path,
+                      meta.deletedEntry.type === "directory",
+                    );
+                    return;
+                  }
                   if (selection.entry && meta?.userInitiated) {
                     setDrillInByView((current) => ({
                       ...current,
@@ -647,6 +697,7 @@ export function WorkspaceInspectorHost({
                   }
                   onFileSelectionChange?.(selection, meta);
                 }}
+                onPinFileTab={onPinFileTab}
                 onActiveDiffEntriesChange={setFileDiffEntries}
               />
             </div>
@@ -660,7 +711,30 @@ export function WorkspaceInspectorHost({
                 onCommit={(ratio) => commitNavigationRatio("files", ratio)}
               />
             ) : null}
-            <div id={detailIds.files} className="workspace-inspector-detail">
+            <div
+              id={detailIds.files}
+              className="workspace-inspector-detail workspace-inspector-file-detail"
+              role="tabpanel"
+              aria-label={fileTabs.activePath ?? "File preview"}
+              tabIndex={-1}
+            >
+              <FilePreviewTabs
+                tabs={fileTabs}
+                panelId={detailIds.files}
+                onSelect={(path) => {
+                  setDrillInByView((current) => ({ ...current, files: true }));
+                  onSelectFileTab(path);
+                }}
+                onPin={onPinFileTab}
+                onClose={onCloseFileTab}
+                onEmptyFocus={() =>
+                  (
+                    hostRef.current?.querySelector<HTMLElement>(
+                      ".inspector-files-resource .file-row[role='treeitem'][tabindex='0']",
+                    ) ?? filesTabRef.current
+                  )?.focus()
+                }
+              />
               <FilePreviewContent
                 entry={fileSelection.entry}
                 preview={fileSelection.preview}
@@ -671,7 +745,6 @@ export function WorkspaceInspectorHost({
                 snippet={fileSelection.snippet}
                 onOpenFile={onOpenDocument}
                 onRefresh={onRefreshFile}
-                onClosePreview={compact ? undefined : closeFilePreview}
                 backAction={
                   compact && drillInByView.files && fileSelection.entry
                     ? {
