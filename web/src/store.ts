@@ -3647,18 +3647,13 @@ export const store = {
       });
       const swap = result?.swap ?? result;
       const layout = swap?.layout as PaneLayout | undefined;
-      // The moved pane keeps focus, so selection follows it to its new slot.
-      const selectedPaneId =
-        typeof swap?.focused_pane_id === "string"
-          ? swap.focused_pane_id
-          : paneId;
+      // Swapping preserves pane IDs, so keep any newer user selection.
       rememberTabLayout(lease.connectionId, lease.generation, layout ?? null);
       if (layout && state.layout?.tab_id === layout.tab_id)
         setForConnection(lease, {
-          selectedPaneId,
           layout:
             state.navigationMode === "browser-local"
-              ? projectBrowserLayout(layout, selectedPaneId)
+              ? projectBrowserLayout(layout, state.selectedPaneId)
               : layout,
         });
       await refreshNow(lease);
