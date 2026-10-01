@@ -1,0 +1,16 @@
+onboarding = false
+
+[terminal]
+default_shell = "/bin/sh"
+shell_mode = "non_login"
+new_cwd = "current"
+
+[update]
+version_check = false
+manifest_check = false
+
+[ui.sound]
+enabled = false
+
+[session]
+resume_agents_on_restore = false

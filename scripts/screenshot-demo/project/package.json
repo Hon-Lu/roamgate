@@ -1,0 +1,8 @@
+{
+  "name": "northstar-demo",
+  "private": true,
+  "scripts": {
+    "dev": "bun server.ts",
+    "test": "bun test"
+  }
+}

@@ -15,9 +15,9 @@ agent sessions, and review files and diffs on desktop or mobile.
 
 ### Desktop
 
-[![Desktop workspace with live terminals and image changes][desktop-changes]][desktop-changes]
+[![Roamgate reviewing Northstar code changes beside passing tests][desktop-changes]][desktop-changes]
 
-Workspace terminals with changed files and image previews.
+A real Northstar demo workspace with code changes and passing tests.
 
 <!-- markdownlint-disable MD033 -->
 
@@ -31,10 +31,10 @@ Workspace terminals with changed files and image previews.
   <tbody>
     <tr>
       <td width="50%" align="center" valign="top">
-        <a href="./docs/images/roamgate-desktop-files.png"><img src="./docs/images/roamgate-desktop-files.png" alt="Desktop file explorer" width="100%" /></a>
+        <a href="./docs/images/roamgate-desktop-files.png"><img src="./docs/images/roamgate-desktop-files.png" alt="Roamgate file explorer with the Northstar task board preview" width="100%" /></a>
       </td>
       <td width="50%" align="center" valign="top">
-        <a href="./docs/images/roamgate-desktop-annotations.png"><img src="./docs/images/roamgate-desktop-annotations.png" alt="Desktop diff annotations" width="100%" /></a>
+        <a href="./docs/images/roamgate-desktop-annotations.png"><img src="./docs/images/roamgate-desktop-annotations.png" alt="Northstar status-filter diff with a line comment and review feedback" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -45,21 +45,21 @@ Workspace terminals with changed files and image previews.
 <table width="100%">
   <thead>
     <tr>
-      <th width="33.33%" align="center">Changed files</th>
-      <th width="33.33%" align="center">Full terminal control</th>
-      <th width="33.33%" align="center">File viewer</th>
+      <th width="33.33%" align="center">Code changes</th>
+      <th width="33.33%" align="center">Terminal and tests</th>
+      <th width="33.33%" align="center">HTML preview</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/roamgate-mobile-changes.png"><img src="./docs/images/roamgate-mobile-changes.png" alt="Mobile changed files viewer" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-changes.png"><img src="./docs/images/roamgate-mobile-changes.png" alt="Northstar status-filter code diff in Roamgate on mobile" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/roamgate-mobile-terminal.png"><img src="./docs/images/roamgate-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-terminal.png"><img src="./docs/images/roamgate-mobile-terminal.png" alt="Northstar passing tests with Roamgate's mobile Composer and terminal shortcuts" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/roamgate-mobile-files.png"><img src="./docs/images/roamgate-mobile-files.png" alt="Mobile file viewer" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-files.png"><img src="./docs/images/roamgate-mobile-files.png" alt="Northstar task board in Roamgate's mobile static HTML preview" width="100%" /></a>
       </td>
     </tr>
   </tbody>
