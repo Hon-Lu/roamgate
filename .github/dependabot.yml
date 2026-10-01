@@ -10,7 +10,7 @@ updates:
           timezone: Etc/UTC
       open-pull-requests-limit: 5
       # Bun groups use package patterns, not unsupported dependency-type filters.
-      # Major upgrades remain individual PRs except for the coupled xterm pair.
+      # Major upgrades stay separate except for coupled React and xterm families.
       groups:
           codemirror:
               patterns: ["@codemirror/*", "@lezer/*", "codemirror"]
@@ -18,9 +18,17 @@ updates:
           syntax-highlighting:
               patterns: ["@shikijs/*", "shiki"]
               update-types: [minor, patch]
-          react:
-              patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+          diff-highlighting:
+              patterns: ["diff2html", "highlight.js"]
               update-types: [minor, patch]
+          radix-ui:
+              # cmdk shares Radix primitives with the popover runtime.
+              patterns: ["@radix-ui/*", "cmdk"]
+              update-types: [minor, patch]
+          react:
+              # Runtime, DOM renderer, and types must move together, including majors.
+              # Keep manual review for compatibility and bundle size; never auto-merge.
+              patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
           xterm-core-fit:
               # No update-types filter: same-core beta bumps are neither minor
               # nor patch to Dependabot. Review this coupled pair together,

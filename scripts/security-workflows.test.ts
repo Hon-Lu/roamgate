@@ -125,7 +125,7 @@ test("security workflows pin actions and do not retain credentials or ignore fai
   }
 });
 
-test("Dependabot uses weekly family groups with an explicit xterm beta-pair exception", () => {
+test("Dependabot groups coupled React and xterm majors for manual review", () => {
   const config = Bun.YAML.parse(
     readFileSync(new URL(".github/dependabot.yml", root), "utf8"),
   ) as {
@@ -165,6 +165,14 @@ test("Dependabot uses weekly family groups with an explicit xterm beta-pair exce
       if (entry["package-ecosystem"] === "bun" && name === "xterm-core-fit") {
         expect(group["update-types"]).toBeUndefined();
         expect(group.patterns).toEqual(["@xterm/xterm", "@xterm/addon-fit"]);
+      } else if (entry["package-ecosystem"] === "bun" && name === "react") {
+        expect(group["update-types"]).toBeUndefined();
+        expect(group.patterns).toEqual([
+          "react",
+          "react-dom",
+          "@types/react",
+          "@types/react-dom",
+        ]);
       } else {
         expect(group["update-types"]).toEqual(["minor", "patch"]);
       }
@@ -178,6 +186,19 @@ test("Dependabot uses weekly family groups with an explicit xterm beta-pair exce
   expect(config.updates[0].groups["xterm-addons"]["exclude-patterns"]).toEqual([
     "@xterm/xterm",
     "@xterm/addon-fit",
+  ]);
+  expect(config.updates[0].groups.codemirror.patterns).toEqual([
+    "@codemirror/*",
+    "@lezer/*",
+    "codemirror",
+  ]);
+  expect(config.updates[0].groups["radix-ui"].patterns).toEqual([
+    "@radix-ui/*",
+    "cmdk",
+  ]);
+  expect(config.updates[0].groups["diff-highlighting"].patterns).toEqual([
+    "diff2html",
+    "highlight.js",
   ]);
   expect(config.updates[1].groups.actions.patterns).toEqual(["*"]);
 });

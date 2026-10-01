@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   assertLazyGrammarAssets,
+  assertLazyEditorAssets,
+  assertLazyIconAssets,
   initialAssetFiles,
 } from "./check-web-assets.mjs";
 
@@ -56,6 +58,52 @@ describe("initial web asset budget", () => {
     ).toThrow("WorkspaceInspectorHost eagerly loads syntax grammar asset");
     expect(() => assertLazyGrammarAssets({})).toThrow(
       "Missing Vite feature chunk",
+    );
+  });
+
+  test("keeps the editor lazy from the app and surrounding features", () => {
+    const manifest = {
+      app: { isEntry: true, file: "app.js", dynamicImports: ["editor"] },
+      inspector: {
+        name: "WorkspaceInspectorHost",
+        file: "inspector.js",
+        dynamicImports: ["editor"],
+      },
+      editor: { name: "code-preview", file: "editor.js" },
+    };
+    expect(() => assertLazyEditorAssets(manifest)).not.toThrow();
+    expect(() =>
+      assertLazyEditorAssets({
+        ...manifest,
+        app: { ...manifest.app, imports: ["editor"] },
+      }),
+    ).toThrow("app eagerly loads the code editor");
+    expect(() =>
+      assertLazyEditorAssets({
+        ...manifest,
+        inspector: { ...manifest.inspector, imports: ["editor"] },
+      }),
+    ).toThrow("inspector eagerly loads the code editor");
+    expect(() => assertLazyEditorAssets({})).toThrow(
+      "Missing lazy code-preview chunk",
+    );
+  });
+
+  test("keeps feature-only icons outside the initial app graph", () => {
+    const manifest = {
+      app: { isEntry: true, file: "app.js", dynamicImports: ["feature"] },
+      feature: { file: "feature.js", imports: ["icons"] },
+      icons: { name: "feature-icons", file: "feature-icons.js" },
+    };
+    expect(() => assertLazyIconAssets(manifest)).not.toThrow();
+    expect(() =>
+      assertLazyIconAssets({
+        ...manifest,
+        app: { ...manifest.app, imports: ["icons"] },
+      }),
+    ).toThrow("App eagerly loads feature-only icons");
+    expect(() => assertLazyIconAssets({})).toThrow(
+      "Missing lazy feature-icons chunk",
     );
   });
 

@@ -14,6 +14,7 @@ type Session = {
   group: string[];
   index: number;
   rects: DOMRect[];
+  scale: number;
   shift: number;
   slot: number;
 };
@@ -74,7 +75,7 @@ export function useTabReorderDrag({
   );
 
   const layout = (current: Session, dx: number) => {
-    const { rects, index, group, shift } = current;
+    const { rects, index, group, shift, scale } = current;
     const first = rects[0];
     const last = rects[rects.length - 1];
     const own = rects[index];
@@ -82,16 +83,22 @@ export function useTabReorderDrag({
       Math.max(dx, first.left - own.left),
       last.right - own.right,
     );
-    const center = own.left + own.width / 2 + offset;
+    // The leading edge can cross a narrow neighbor even at the group's bounds.
+    const position =
+      offset > 0
+        ? own.right + offset
+        : offset < 0
+          ? own.left + offset
+          : own.left + own.width / 2;
     const others = rects
       .filter((_, i) => i !== index)
       .map((rect) => rect.left + rect.width / 2);
-    current.slot = tabDropSlot(center, others);
+    current.slot = tabDropSlot(position, others);
     group.forEach((tabId, i) => {
       const el = element(tabId);
       if (!el) return;
       if (i === index) {
-        el.style.transform = `translateX(${offset}px)`;
+        el.style.transform = `translateX(${offset / scale}px)`;
         return;
       }
       const moved =
@@ -102,7 +109,7 @@ export function useTabReorderDrag({
           : i >= current.slot && i < index
             ? shift
             : 0;
-      el.style.transform = moved ? `translateX(${moved}px)` : "";
+      el.style.transform = moved ? `translateX(${moved / scale}px)` : "";
     });
   };
 
@@ -110,7 +117,7 @@ export function useTabReorderDrag({
     const current = session.current;
     session.current = null;
     if (!current?.dragging) return;
-    const { rects, index, group } = current;
+    const { rects, index, group, scale } = current;
     const slot = commit ? current.slot : index;
     const own = rects[index];
     const target =
@@ -121,7 +128,7 @@ export function useTabReorderDrag({
     if (el) {
       el.classList.remove("is-dragging");
       el.classList.add("is-settling");
-      el.style.transform = target ? `translateX(${target}px)` : "";
+      el.style.transform = target ? `translateX(${target / scale}px)` : "";
     }
     if (!commit || slot === index) {
       for (const tabId of group)
@@ -172,6 +179,8 @@ export function useTabReorderDrag({
         if (e.pointerType === "touch" || e.button !== 0) return;
         if ((e.target as HTMLElement).closest("button")) return;
         if (session.current || settleTimer.current) return;
+        // Keep receiving release/cancel even before the drag threshold.
+        e.currentTarget.setPointerCapture(e.pointerId);
         session.current = {
           pointerId: e.pointerId,
           tabId,
@@ -180,6 +189,7 @@ export function useTabReorderDrag({
           group: [],
           index: 0,
           rects: [],
+          scale: 1,
           shift: 0,
           slot: 0,
         };
@@ -187,6 +197,10 @@ export function useTabReorderDrag({
       onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
         const current = session.current;
         if (!current || current.pointerId !== e.pointerId) return;
+        if (!(e.buttons & 1)) {
+          finish(false);
+          return;
+        }
         const dx = e.clientX - current.startX;
         if (!current.dragging) {
           if (Math.abs(dx) < DRAG_START_PX) return;
@@ -201,15 +215,18 @@ export function useTabReorderDrag({
           }
           const gap =
             rects.length > 1 ? Math.max(0, rects[1].left - rects[0].right) : 0;
+          // Rects and pointer coordinates are viewport pixels; transforms use
+          // CSS pixels. Measure the actual zoom ratio, as other drag controls do.
+          const bar = e.currentTarget.parentElement ?? e.currentTarget;
           Object.assign(current, {
             dragging: true,
             group,
             rects,
+            scale: bar.getBoundingClientRect().width / bar.offsetWidth || 1,
             index,
             slot: index,
             shift: rects[index].width + gap,
           });
-          e.currentTarget.setPointerCapture(e.pointerId);
           e.currentTarget.classList.add("is-dragging");
           e.currentTarget.parentElement?.classList.add("is-reordering");
         }
@@ -221,7 +238,12 @@ export function useTabReorderDrag({
         if (current.dragging) suppressClick.current = true;
         finish(true);
       },
-      onPointerCancel: () => finish(false),
+      onPointerCancel: (e: React.PointerEvent<HTMLElement>) => {
+        if (session.current?.pointerId === e.pointerId) finish(false);
+      },
+      onLostPointerCapture: (e: React.PointerEvent<HTMLElement>) => {
+        if (session.current?.pointerId === e.pointerId) finish(false);
+      },
       onClickCapture: (e: React.MouseEvent<HTMLElement>) => {
         if (!suppressClick.current) return;
         suppressClick.current = false;

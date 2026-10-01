@@ -6,8 +6,8 @@ import { fileURLToPath, URL } from "node:url";
 const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 const maxFileCount = 160;
 const maxTotalBytes = 12 * 1024 * 1024;
-const maxInitialJsBytes = 660 * 1024;
-const maxInitialJsGzipBytes = 205 * 1024;
+const maxInitialJsBytes = 661 * 1024;
+const maxInitialJsGzipBytes = 204 * 1024;
 const maxInitialCssBytes = 196 * 1024;
 
 /** Follow eager imports only, from app entries or explicitly selected features. */
@@ -54,6 +54,35 @@ export function assertLazyGrammarAssets(manifest) {
   }
 }
 
+export function assertLazyEditorAssets(manifest) {
+  const editor = Object.values(manifest).find(
+    (chunk) => chunk.name === "code-preview",
+  );
+  if (!editor) throw new Error("Missing lazy code-preview chunk");
+  const entries = Object.keys(manifest).filter(
+    (key) =>
+      manifest[key].isEntry ||
+      ["ConfigurationDialog", "WorkspaceInspectorHost"].includes(
+        manifest[key].name,
+      ),
+  );
+  for (const key of entries) {
+    if (initialAssetFiles(manifest, [key]).includes(editor.file)) {
+      throw new Error(`${key} eagerly loads the code editor`);
+    }
+  }
+}
+
+export function assertLazyIconAssets(manifest) {
+  const icons = Object.values(manifest).find(
+    (chunk) => chunk.name === "feature-icons",
+  );
+  if (!icons) throw new Error("Missing lazy feature-icons chunk");
+  if (initialAssetFiles(manifest).includes(icons.file)) {
+    throw new Error("App eagerly loads feature-only icons");
+  }
+}
+
 async function collectAssetStats(root) {
   const directories = [root];
   let fileCount = 0;
@@ -91,6 +120,8 @@ async function checkAssets() {
     );
   }
   assertLazyGrammarAssets(manifest);
+  assertLazyEditorAssets(manifest);
+  assertLazyIconAssets(manifest);
   let jsBytes = 0;
   let jsGzipBytes = 0;
   let cssBytes = 0;

@@ -51,14 +51,15 @@ export function moveTabInList<T extends Pick<Tab, "tab_id" | "workspace_id">>(
 }
 
 /**
- * Display slot the dragged tab lands in while its center sits at `center`,
+ * Display slot the dragged tab lands in at the drag position `position`,
  * given the resting midpoints of the other tabs in its group, left to right.
  */
 export function tabDropSlot(
-  center: number,
+  position: number,
   otherMidpoints: readonly number[],
 ): number {
   let slot = 0;
-  while (slot < otherMidpoints.length && center > otherMidpoints[slot]) slot++;
+  while (slot < otherMidpoints.length && position > otherMidpoints[slot])
+    slot++;
   return slot;
 }
