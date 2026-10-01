@@ -298,14 +298,17 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   position is kept per browser and stays clear of the header and tab strip.
 - The bottom-right **Type** button opens one input dock with a
   **Composer / Direct** mode switch and the configured two shortcut rows.
-  The grid button shows or hides both rows in either mode.
+  The keyboard button shows or hides both rows in either mode.
   Composer supports IME, dictation,
   multiline text, and images. Tap its editor to open the device keyboard. **Insert**
   does not execute; **Send** adds one Enter. Drafts are in-memory per
   connection/pane; closing their pane/tab/workspace asks before discarding.
   Direct sends keys immediately through the terminal's keyboard input and
-  preserves the Composer draft. Reopening input or switching panes/connections
-  starts in Composer. Shortcut keys act on the terminal in either mode.
+  preserves the Composer draft. Explicit mode switches are remembered per
+  browser, including after reload; reopening input restores that choice
+  (Composer by default). **Type** opens the keyboard in the restored mode.
+  Connection and pane safety resets return the live dock to Composer
+  without changing the saved choice. Shortcut keys act on the terminal in either mode.
 - In the mobile composer, the **terminal command icon (`>_`)** opens a floating
   command picker above the input without shrinking the editor or terminal.
   It browses built-in catalogs for Claude Code, Codex, Pi, Kimi Code, Grok Build,

@@ -32,7 +32,6 @@ import { Terminal } from "@xterm/xterm";
 import {
   Columns2,
   Keyboard,
-  Grid2X2,
   Maximize2,
   Minimize2,
   Rows2,
@@ -168,6 +167,10 @@ import { applyTerminalTheme } from "../terminalThemes";
 import { paneHasAgentHistory } from "./agentSession";
 import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
 import { TerminalComposer, type TerminalInputMode } from "./TerminalComposer";
+import {
+  readTerminalInputMode,
+  rememberTerminalInputMode,
+} from "../terminalInputMode";
 import "./TerminalView.css";
 
 function focusTerminalEndpoint(
@@ -509,6 +512,8 @@ export function TerminalView({
   const paneZoomed =
     s.layout?.zoomed === true && s.layout.focused_pane_id === pane?.pane_id;
   const composerOpen = controlledComposerOpen ?? localComposerOpen;
+  const directDisabled =
+    s.status !== "connected" || s.connectionPaused || !!terminalAttachError;
   const [composerMode, setComposerMode] =
     useState<TerminalInputMode>("composer");
   const composerModeRef = useRef(composerMode);
@@ -567,6 +572,23 @@ export function TerminalView({
     composerEditingRef.current = composerOpen;
     closeTerminalInput();
   }, [closeTerminalInput, isActivePane, composerOpen]);
+  const previousComposerOpenRef = useRef(false);
+  useLayoutEffect(() => {
+    const opening = composerOpen && !previousComposerOpenRef.current;
+    // Keep an initial opening pending until xterm exists: its first instance
+    // also runs the safety reset above. Once opened, replacing that instance
+    // is a safety reset, not another request to restore the preference.
+    previousComposerOpenRef.current =
+      composerOpen && (previousComposerOpenRef.current || !!termInstance);
+    if (!opening || directDisabled) return;
+    // Restore only on opening, after the safety effects retire the old input
+    // session. Reconnects and pane changes must not activate Direct input or
+    // overwrite the saved choice. Only a fresh input gesture may enable stdin.
+    const mode = readTerminalInputMode();
+    setComposerMode(mode);
+    composerModeRef.current = mode;
+    composerEditingRef.current = mode === "composer";
+  }, [composerOpen, directDisabled, termInstance]);
   const setComposerOpen = useCallback(
     (open: boolean) => {
       if (controlledComposerOpen === undefined) setLocalComposerOpen(open);
@@ -3487,7 +3509,7 @@ export function TerminalView({
               onPointerDown={preventShortcutFocus}
               onClick={() => setMobileKeysOpen((value) => !value)}
             >
-              <Grid2X2 size={17} />
+              <Keyboard size={17} />
             </button>
             <div className="terminal-mobile-keys-panel">
               <div
@@ -3546,16 +3568,15 @@ export function TerminalView({
             draftKey={composerDraftKey}
             agent={pane.agent}
             mode={composerMode}
-            onModeChange={(mode) => {
+            onModeChange={(mode, remember) => {
+              if (!connectionClient.isCurrent() || !isActivePaneRef.current)
+                return;
               closeTerminalInput();
               setComposerMode(mode);
+              if (remember) rememberTerminalInputMode(mode);
             }}
             onFocusDirect={focusTerminalInput}
-            directDisabled={
-              s.status !== "connected" ||
-              s.connectionPaused ||
-              !!terminalAttachError
-            }
+            directDisabled={directDisabled}
             shortcutRows={mobileShortcuts}
             onRunShortcut={runMobileShortcut}
             shortcutDisabledReason={mobileShortcutReason}

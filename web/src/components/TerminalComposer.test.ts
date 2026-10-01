@@ -1,5 +1,5 @@
 import { expect, mock, spyOn, test } from "bun:test";
-import { SquareTerminal } from "lucide-react";
+import { Keyboard, SquareTerminal } from "lucide-react";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as drafts from "../terminalComposer";
@@ -27,6 +27,7 @@ test.each(["claude", "grok-build", "agy"])(
     let currentAgent: string | undefined = agent;
     let mode: TerminalInputMode = "composer";
     let directDisabled = false;
+    const modeChoices: TerminalInputMode[] = [];
     let draft = "keep this draft";
     let listener: ((text: string) => void) | undefined;
     const onSubmit = mock<(text: string, submit: boolean) => Promise<void>>(
@@ -193,7 +194,8 @@ test.each(["claude", "grok-build", "agy"])(
           TerminalComposer({
             draftKey: "command-interaction",
             mode,
-            onModeChange(next) {
+            onModeChange(next, remember) {
+              if (remember) modeChoices.push(next);
               mode = next;
               dirty = true;
             },
@@ -404,6 +406,9 @@ test.each(["claude", "grok-build", "agy"])(
       textarea.setSelectionRange(2, 5);
       // Hiding both shortcut rows preserves the draft, caret, and native focus.
       expect(shortcutPanel().props.hidden).toBe(false);
+      expect((shortcutToggle().props.children as React.ReactElement).type).toBe(
+        Keyboard,
+      );
       expect(shortcutToggle().props["aria-controls"]).toBe(
         shortcutPanel().props.id,
       );
@@ -420,6 +425,7 @@ test.each(["claude", "grok-build", "agy"])(
       expect(onSubmit).not.toHaveBeenCalled();
       expect(onRunShortcut).not.toHaveBeenCalled();
       changeMode("direct");
+      expect(modeChoices).toEqual(["direct"]);
       expect(find("value", "direct").props.checked).toBe(true);
       expect(editor().props.hidden).toBe(true);
       expect(activeElement).toBe(directInput);
@@ -460,7 +466,20 @@ test.each(["claude", "grok-build", "agy"])(
             element.props.className === "terminal-composer-direct-focus",
         ),
       ).toBe(false);
+      const choicesBeforeCommands = [...modeChoices];
+      const dock = find("className", "terminal-composer");
+      const dockTarget = {};
+      onFocusDirect.mockClear();
+      // The explicit Type gesture forwards only focus on the dock itself.
+      invoke(dock, "onFocus", { target: {}, currentTarget: dockTarget });
+      expect(onFocusDirect).not.toHaveBeenCalled();
+      invoke(dock, "onFocus", {
+        target: dockTarget,
+        currentTarget: dockTarget,
+      });
+      expect(onFocusDirect).toHaveBeenCalledTimes(1);
       invoke(commands(), "onClick");
+      expect(modeChoices).toEqual(choicesBeforeCommands);
       expect(mode).toBe("composer");
       expect(picker()).toBeDefined();
       expect(draft).toBe("new upload or edit");
@@ -474,6 +493,7 @@ test.each(["claude", "grok-build", "agy"])(
       changeMode("direct");
       invoke(find("aria-label", "Send Enter"), "onClick");
       expect(mode).toBe("composer");
+      expect(modeChoices).toEqual(choicesBeforeCommands);
       expect(onRunShortcut).not.toHaveBeenCalled();
       invoke(editor(), "onCompositionEnd");
       invoke(find("aria-label", "Send Enter"), "onClick");
@@ -482,6 +502,22 @@ test.each(["claude", "grok-build", "agy"])(
       directDisabled = true;
       render();
       expect(find("value", "direct").props.disabled).toBe(true);
+      changeMode("direct");
+      expect(modeChoices).toEqual(choicesBeforeCommands);
+      // Neither Composer nor an unavailable Direct mode forwards dock focus.
+      onFocusDirect.mockClear();
+      invoke(find("className", "terminal-composer"), "onFocus", {
+        target: dockTarget,
+        currentTarget: dockTarget,
+      });
+      mode = "direct";
+      render();
+      invoke(find("className", "terminal-composer"), "onFocus", {
+        target: dockTarget,
+        currentTarget: dockTarget,
+      });
+      expect(onFocusDirect).not.toHaveBeenCalled();
+      mode = "composer";
       directDisabled = false;
       render();
 

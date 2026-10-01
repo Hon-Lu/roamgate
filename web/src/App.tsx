@@ -3745,9 +3745,7 @@ export default function App() {
             });
             // Focus inside the tap gesture so iOS can open its IME keyboard.
             document
-              .querySelector<HTMLTextAreaElement>(
-                ".terminal-composer-input:not([hidden])",
-              )
+              .querySelector<HTMLElement>(".terminal-composer")
               ?.focus({ preventScroll: true });
           }}
         >

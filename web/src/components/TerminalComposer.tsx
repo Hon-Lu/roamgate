@@ -7,7 +7,7 @@ import {
   CircleHelp,
   CornerDownLeft,
   CornerDownRight,
-  Grid2X2,
+  Keyboard,
   Paperclip,
   SquareTerminal,
   X,
@@ -53,11 +53,11 @@ import {
   workspacePathFromDrag,
 } from "../workspacePathDrag";
 import "./TerminalComposer.css";
+import type { TerminalInputMode } from "../terminalInputMode";
+export type { TerminalInputMode } from "../terminalInputMode";
 
 const TERMINAL_COMPOSER_HELP =
   "Composer uses your phone’s native editor for IME, dictation, multiline text, and cursor editing. Insert pastes the draft; Send also sends Enter. In Direct, tap the terminal to open the keyboard and send keys immediately. Switching modes preserves the draft. Shortcut keys always act on the terminal. Adding a file opens the system picker and inserts its uploaded path into the draft; tap the editor to reopen the keyboard if needed.";
-
-export type TerminalInputMode = "composer" | "direct";
 
 /**
  * Bottom-docked mobile terminal composer. A plain textarea owns all editing
@@ -93,7 +93,7 @@ export function TerminalComposer({
 }: {
   draftKey: string;
   mode: TerminalInputMode;
-  onModeChange: (mode: TerminalInputMode) => void;
+  onModeChange: (mode: TerminalInputMode, remember?: boolean) => void;
   onFocusDirect: () => void;
   directDisabled: boolean;
   agent?: string;
@@ -416,6 +416,15 @@ export function TerminalComposer({
         data-input-mode={mode}
         role="dialog"
         aria-label="Terminal input"
+        tabIndex={-1}
+        onFocus={(event) => {
+          // Type focuses the dock synchronously within its tap gesture. Mode
+          // restoration alone must never activate a live terminal session.
+          if (event.target !== event.currentTarget) return;
+          if (mode === "composer")
+            textareaRef.current?.focus({ preventScroll: true });
+          else if (!directDisabled) onFocusDirect();
+        }}
       >
         <div className="terminal-composer-toolbar">
           <fieldset className="terminal-composer-mode" aria-label="Input mode">
@@ -431,11 +440,15 @@ export function TerminalComposer({
                     composing || (nextMode === "direct" && directDisabled)
                   }
                   onChange={(e) => {
-                    if (composingRef.current) return;
+                    if (
+                      composingRef.current ||
+                      (nextMode === "direct" && directDisabled)
+                    )
+                      return;
                     const focusInput = (e.nativeEvent as MouseEvent).detail > 0;
                     flushSync(() => {
                       dismissCommands();
-                      onModeChange(nextMode);
+                      onModeChange(nextMode, true);
                     });
                     if (focusInput) {
                       if (nextMode === "composer")
@@ -467,7 +480,7 @@ export function TerminalComposer({
               onMouseDown={keepTextareaFocus}
               onClick={() => setShortcutsOpen((open) => !open)}
             >
-              <Grid2X2 size={17} aria-hidden="true" />
+              <Keyboard size={17} aria-hidden="true" />
             </button>
           ) : null}
           <button
