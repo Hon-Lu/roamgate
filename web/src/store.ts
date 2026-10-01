@@ -20,6 +20,7 @@ import {
   tabCloseBlockReason,
   tabPinsFor,
 } from "./tabPins";
+import { moveTabInList } from "./tabReorder";
 import {
   type EndpointAvailability,
   parseEndpointAdvertisement,
@@ -2620,6 +2621,29 @@ export const store = {
   renameTab(tabId: string, label: string) {
     return action((lease) =>
       lease.client.call("tab.rename", { tab_id: tabId, label }),
+    );
+  },
+
+  /** Move a tab within its workspace (Herdr tab.move insert-before index). */
+  moveTab(tabId: string, insertIndex: number) {
+    return action(
+      async (lease) => {
+        // Settle the strip in its new order before Herdr's list comes back.
+        const previousTabs = state.tabs;
+        setForConnection(lease, {
+          tabs: moveTabInList(previousTabs, tabId, insertIndex),
+        });
+        try {
+          return await lease.client.call("tab.move", {
+            tab_id: tabId,
+            insert_index: insertIndex,
+          });
+        } catch (error) {
+          if (state.tabs !== previousTabs) void refreshNow(lease);
+          throw error;
+        }
+      },
+      { refresh: "immediate" },
     );
   },
 
