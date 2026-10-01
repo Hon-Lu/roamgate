@@ -3638,6 +3638,34 @@ export const store = {
     });
   },
 
+  /** Swap a pane with its neighbor in the given direction (Herdr pane.swap). */
+  movePane(paneId: string, direction: "left" | "right" | "up" | "down") {
+    return action(async (lease) => {
+      const result = await lease.client.call("pane.swap", {
+        pane_id: paneId,
+        direction,
+      });
+      const swap = result?.swap ?? result;
+      const layout = swap?.layout as PaneLayout | undefined;
+      // The moved pane keeps focus, so selection follows it to its new slot.
+      const selectedPaneId =
+        typeof swap?.focused_pane_id === "string"
+          ? swap.focused_pane_id
+          : paneId;
+      rememberTabLayout(lease.connectionId, lease.generation, layout ?? null);
+      if (layout && state.layout?.tab_id === layout.tab_id)
+        setForConnection(lease, {
+          selectedPaneId,
+          layout:
+            state.navigationMode === "browser-local"
+              ? projectBrowserLayout(layout, selectedPaneId)
+              : layout,
+        });
+      await refreshNow(lease);
+      return result;
+    });
+  },
+
   focusPaneDirection(
     paneId: string,
     direction: "left" | "right" | "up" | "down",
