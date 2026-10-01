@@ -50,13 +50,13 @@ describe("tab pin display order", () => {
     { tab_id: "w1:t2", number: 2 },
   ];
 
-  test("keeps Herdr tab-number order without pins", () => {
+  test("keeps Herdr tab-list order without pins", () => {
     expect(
       orderTabsForDisplay(tabs, new Set()).map((tab) => tab.tab_id),
-    ).toEqual(["w1:t1", "w1:t2", "w1:t3", "w1:t5"]);
+    ).toEqual(["w1:t3", "w1:t1", "w1:t5", "w1:t2"]);
   });
 
-  test("moves pinned tabs first and keeps each group by tab number", () => {
+  test("moves pinned tabs first and keeps each group in list order", () => {
     expect(
       orderTabsForDisplay(tabs, new Set(["w1:t5", "w1:t3"])).map(
         (tab) => tab.tab_id,

@@ -11,6 +11,9 @@ A Web/PWA client for a running [Herdr](https://herdr.dev) server.
 - Pinned tabs lead the tab strip and cannot be closed from Roamgate; their
   panes still close while another pane remains. Herdr keeps tab ids across
   restarts, so pins persist until the tab closes elsewhere, such as in the TUI.
+- Drag a tab with the mouse to reorder it within its pinned or unpinned group;
+  Escape cancels. The order is saved in Herdr (`tab.move`), and numbered tab
+  shortcuts address tab-strip positions.
 - Split right/down, resize, focus neighbors, move panes to swap with a
   neighbor, zoom, or close panes.
 - Search workspaces, worktrees, files, tabs, panes, and agents in the command

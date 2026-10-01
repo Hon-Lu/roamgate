@@ -54,15 +54,17 @@ export function withTabPinned(
   return [...withoutTab, tabId].slice(-MAX_TAB_PINS);
 }
 
-/** Pinned tabs first, each group in stable Herdr tab-number order. */
+/**
+ * Pinned tabs first, each group in Herdr's tab-list order. Tab numbers are
+ * stable ids that do not follow `tab.move`, so they never decide position.
+ */
 export function orderTabsForDisplay<T extends Pick<Tab, "tab_id" | "number">>(
   tabs: readonly T[],
   pinnedTabIds: ReadonlySet<string>,
 ): T[] {
   return [...tabs].sort(
     (a, b) =>
-      Number(pinnedTabIds.has(b.tab_id)) - Number(pinnedTabIds.has(a.tab_id)) ||
-      a.number - b.number,
+      Number(pinnedTabIds.has(b.tab_id)) - Number(pinnedTabIds.has(a.tab_id)),
   );
 }
 

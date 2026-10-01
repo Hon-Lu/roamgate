@@ -153,7 +153,7 @@ import {
   closeShortcutTarget,
   tabShortcutAction,
 } from "./tabShortcuts";
-import { tabPinsFor } from "./tabPins";
+import { orderTabsForDisplay, tabPinsFor } from "./tabPins";
 import { copyTextFromUserGesture } from "./terminalClipboard";
 import { terminalPasteRequest } from "./terminalPaste";
 import {
@@ -2976,9 +2976,9 @@ export default function App() {
           return;
         }
 
-        const tabs = current.tabs
-          .filter((tab) => tab.workspace_id === focusedWorkspace.workspace_id)
-          .sort((a, b) => a.number - b.number);
+        const tabs = current.tabs.filter(
+          (tab) => tab.workspace_id === focusedWorkspace.workspace_id,
+        );
         const tabIds = new Set(tabs.map((tab) => tab.tab_id));
         const activeTabId = [
           focusedWorkspace.active_tab_id,
@@ -3083,9 +3083,13 @@ export default function App() {
         if (isEditableElement(e.target)) return;
         const current = store.get();
         const focusedWorkspace = current.workspaces.find((w) => w.focused);
-        const tabs = current.tabs
-          .filter((tab) => tab.workspace_id === focusedWorkspace?.workspace_id)
-          .sort((a, b) => a.number - b.number);
+        // Number shortcuts address tab-strip positions, pinned tabs first.
+        const tabs = orderTabsForDisplay(
+          current.tabs.filter(
+            (tab) => tab.workspace_id === focusedWorkspace?.workspace_id,
+          ),
+          tabPinsFor(current.activeConnectionId),
+        );
         const targetTab = tabs[tabIndex];
         if (!targetTab) return;
         e.preventDefault();

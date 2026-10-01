@@ -22,6 +22,8 @@ import {
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
 import { summarizeTabAgents } from "./agentSession";
+import { tabMoveInsertIndex } from "../tabReorder";
+import { useTabReorderDrag } from "./useTabReorderDrag";
 import "./TabBar.css";
 
 const LONG_PRESS_MS = 550;
@@ -108,6 +110,22 @@ export function TabBar({
     s.tabs.filter((t) => t.workspace_id === focusedWs?.workspace_id),
     pinnedTabIds,
   );
+  const reorder = useTabReorderDrag({
+    groupOf: (tabId) => {
+      const pinned = pinnedTabIds.has(tabId);
+      return tabs
+        .filter((tab) => pinnedTabIds.has(tab.tab_id) === pinned)
+        .map((tab) => tab.tab_id);
+    },
+    orderKey: tabs.map((tab) => tab.tab_id).join(" "),
+    onDrop: (tabId, groupOrder) => {
+      const herdrOrder = s.tabs
+        .filter((tab) => tab.workspace_id === focusedWs?.workspace_id)
+        .map((tab) => tab.tab_id);
+      const insertIndex = tabMoveInsertIndex(herdrOrder, tabId, groupOrder);
+      if (insertIndex !== null) void store.moveTab(tabId, insertIndex);
+    },
+  });
   const pendingCloseTab = s.tabs.find((t) => t.tab_id === pendingCloseTabId);
   const pendingCloseTabName = tabName(pendingCloseTab);
   const pendingCloseTabPaneIds = s.panes
@@ -247,6 +265,8 @@ export function TabBar({
             return (
               <div
                 key={t.tab_id}
+                ref={reorder.register(t.tab_id)}
+                {...reorder.handlers(t.tab_id)}
                 className={`tabbar-tab ${t.focused ? "is-active" : ""} ${
                   pinned ? "is-pinned" : ""
                 }`}

@@ -43,6 +43,44 @@
   background: var(--panel-2);
 }
 
+/* Drag to reorder: neighbors slide aside while the lifted tab tracks 1:1. */
+.tabbar-tab {
+  position: relative;
+  transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.tabbar.is-reordering {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tabbar.is-reordering .tabbar-tab {
+  cursor: grabbing;
+}
+
+.tabbar-tab.is-dragging,
+.tabbar-tab.is-settling {
+  z-index: 1;
+  background: var(--panel-2);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+}
+
+.tabbar-tab.is-dragging {
+  transition: none;
+}
+
+.tabbar-tab.is-active.is-dragging,
+.tabbar-tab.is-active.is-settling {
+  background: var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-tab {
+    transition: none;
+  }
+}
+
 .tabbar-tab.is-active {
   background: var(--accent-soft);
   border-color: var(--accent);

@@ -308,9 +308,9 @@ export function CommandCombobox({
   );
   const focusedWorkspaceTabs = useMemo(
     () =>
-      s.tabs
-        .filter((tab) => tab.workspace_id === focusedWorkspace?.workspace_id)
-        .sort((a, b) => a.number - b.number),
+      s.tabs.filter(
+        (tab) => tab.workspace_id === focusedWorkspace?.workspace_id,
+      ),
     [focusedWorkspace?.workspace_id, s.tabs],
   );
   const activeAgent =
