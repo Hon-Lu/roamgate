@@ -165,7 +165,7 @@ describe("mobile terminal shortcuts", () => {
         "escape",
         "tab",
         "enter",
-        null,
+        "backspace",
         "arrow-left",
         "arrow-down",
         "arrow-right",
@@ -181,6 +181,26 @@ describe("mobile terminal shortcuts", () => {
     expect(
       rows.every((row) => row.length <= MAX_MOBILE_TERMINAL_SHORTCUTS_PER_ROW),
     ).toBe(true);
+  });
+
+  test("upgrades an untouched stored layout to the Backspace defaults", () => {
+    const previous = defaultMobileTerminalShortcutRows();
+    previous[1][3] = null;
+    expect(
+      parseMobileTerminalShortcutRows(
+        serializeMobileTerminalShortcutRows(previous),
+      ),
+    ).toEqual(defaultMobileTerminalShortcutRows());
+    expect(defaultMobileTerminalShortcutRows()[1][3]?.label).toBe("Bksp");
+
+    const customized = defaultMobileTerminalShortcutRows();
+    customized[1][3] = null;
+    customized[0][4] = { id: "home", label: "Home", action: "home" };
+    expect(
+      parseMobileTerminalShortcutRows(
+        serializeMobileTerminalShortcutRows(customized),
+      ),
+    ).toEqual(customized);
   });
 
   test("normalizes untrusted stored rows, labels, actions, and ids", () => {
@@ -328,7 +348,7 @@ describe("mobile terminal shortcuts", () => {
     const encoded = serializeMobileTerminalShortcutRows(first);
     const parsed = parseMobileTerminalShortcutRows(encoded);
     expect(parsed[0][0]?.label).toBe("Changed");
-    expect(mobileTerminalShortcutCount(parsed)).toBe(13);
+    expect(mobileTerminalShortcutCount(parsed)).toBe(14);
   });
 
   test("encodes control, navigation, and modified keys", () => {

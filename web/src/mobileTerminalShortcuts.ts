@@ -323,7 +323,7 @@ const defaultRows: MobileTerminalShortcutRows = [
     { id: "default-escape", label: "Esc", action: "escape" },
     { id: "default-tab", label: "Tab", action: "tab" },
     { id: "default-enter", label: "Enter", action: "enter" },
-    null,
+    { id: "default-backspace", label: "Bksp", action: "backspace" },
     { id: "default-arrow-left", label: "◀", action: "arrow-left" },
     { id: "default-arrow-down", label: "▼", action: "arrow-down" },
     { id: "default-arrow-right", label: "▶", action: "arrow-right" },
@@ -335,6 +335,13 @@ export function defaultMobileTerminalShortcutRows(): MobileTerminalShortcutRows 
   return defaultRows.map((row) =>
     row.map((shortcut) => (shortcut ? { ...shortcut } : null)),
   ) as MobileTerminalShortcutRows;
+}
+
+/** The defaults before Backspace joined the second row. */
+function previousDefaultRows(): MobileTerminalShortcutRows {
+  const rows = defaultMobileTerminalShortcutRows();
+  rows[1][3] = null;
+  return rows;
 }
 
 export function defaultMobileTerminalSideShortcuts(): MobileTerminalSideShortcuts {
@@ -521,7 +528,13 @@ export function parseMobileTerminalShortcutRows(
 ): MobileTerminalShortcutRows {
   if (!raw) return defaultMobileTerminalShortcutRows();
   try {
-    return normalizeMobileTerminalShortcutRows(JSON.parse(raw));
+    const rows = normalizeMobileTerminalShortcutRows(JSON.parse(raw));
+    // The app saves rows on every launch, so an untouched layout is stored
+    // verbatim; upgrade it to the current defaults, which add Backspace.
+    return JSON.stringify(rows) ===
+      serializeMobileTerminalShortcutRows(previousDefaultRows())
+      ? defaultMobileTerminalShortcutRows()
+      : rows;
   } catch {
     return defaultMobileTerminalShortcutRows();
   }
