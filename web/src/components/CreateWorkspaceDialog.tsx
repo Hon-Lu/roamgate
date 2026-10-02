@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { luckyWorkspaceName } from "../luckyName";
 import { store, useEndpointCreationReason } from "../store";
 import { CloseButton } from "./CloseButton";
@@ -19,9 +19,7 @@ export function CreateWorkspaceDialog({
   const [label, setLabel] = useState("");
   const [cwd, setCwd] = useState("");
   const labelRef = useRef<HTMLInputElement>(null);
-  const onCloseRef = useRef(onClose);
-
-  onCloseRef.current = onClose;
+  const onCloseEvent = useEffectEvent(onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -29,7 +27,7 @@ export function CreateWorkspaceDialog({
     setCwd(initialCwd?.trim() ?? "");
     const cancelFocus = focusDialogElement(labelRef.current, { select: true });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape") onCloseEvent();
     };
     window.addEventListener("keydown", onKey);
     return () => {

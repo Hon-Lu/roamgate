@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TerminalThemeDialog } from "./TerminalThemeDialog";
-import { PopoverContent } from "./ui/popover";
+import * as PopoverUI from "./ui/popover";
 
 function renderFontSearch(search: string, installedFonts: string[] | null) {
   // Seed the dialog's draft/delete state and the picker's open/search/list state.
@@ -13,14 +13,13 @@ function renderFontSearch(search: string, installedFonts: string[] | null) {
     .mockImplementationOnce(() => [search, () => {}])
     .mockImplementationOnce(() => [installedFonts, () => {}]);
   // SSR cannot mount the portal; render its real command contents inline.
-  const content = spyOn(
-    PopoverContent as typeof PopoverContent & {
-      render: (
-        props: React.ComponentProps<typeof PopoverContent>,
-      ) => React.ReactNode;
-    },
-    "render",
-  ).mockImplementation((props) => props.children);
+  const content = spyOn(PopoverUI, "PopoverContent").mockImplementation(
+    Object.assign(
+      ({ children }: React.ComponentProps<typeof PopoverUI.PopoverContent>) =>
+        React.createElement(React.Fragment, null, children),
+      { displayName: PopoverUI.PopoverContent.displayName },
+    ),
+  );
   try {
     return renderToStaticMarkup(
       React.createElement(TerminalThemeDialog, {

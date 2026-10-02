@@ -1,6 +1,5 @@
 import { roamgateLocalStorage } from "../browserStorage";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -11,6 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  type Ref,
 } from "react";
 import {
   ChevronDown,
@@ -91,6 +91,7 @@ export type DiffViewerPanelHandle = {
 };
 
 export type DiffViewerPanelProps = {
+  ref?: Ref<DiffViewerPanelHandle>;
   workspaceId?: string;
   resourceKey?: string;
   onSelectionChange?: (
@@ -882,13 +883,13 @@ type DiffConfirmState = {
   run: () => void;
 };
 
-export const DiffViewerPanel = forwardRef<
-  DiffViewerPanelHandle,
-  DiffViewerPanelProps
->(function DiffViewerPanel(
-  { workspaceId, resourceKey, onSelectionChange, onOpenFile },
+export function DiffViewerPanel({
+  workspaceId,
+  resourceKey,
+  onSelectionChange,
+  onOpenFile,
   ref,
-) {
+}: DiffViewerPanelProps) {
   const workspaces = useStoreSelector((state) => state.workspaces);
   const connectionClient = useConnectionClient();
   const canReveal = useCanRevealInFileManager();
@@ -2131,7 +2132,7 @@ export const DiffViewerPanel = forwardRef<
       />
     </aside>
   );
-});
+}
 
 function DiffSkeleton() {
   return (

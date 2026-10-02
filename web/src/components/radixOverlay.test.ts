@@ -52,7 +52,7 @@ async function registerDomTests() {
     cancelAnimationFrame: browser.cancelAnimationFrame.bind(browser),
     IS_REACT_ACT_ENVIRONMENT: true,
   });
-  const { act, createElement: h } = await import("react");
+  const { act, createElement: h, createRef } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const { Popover, PopoverTrigger, PopoverContent } = await import(
     "./ui/popover"
@@ -73,6 +73,9 @@ async function registerDomTests() {
     const container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
+    const contentRef = createRef<HTMLDivElement>();
+    const inputRef = createRef<HTMLInputElement>();
+    const itemRef = createRef<HTMLDivElement>();
     await act(async () =>
       root!.render(
         h(
@@ -81,15 +84,22 @@ async function registerDomTests() {
           h(PopoverTrigger, null, "Commands"),
           h(
             PopoverContent,
-            null,
+            { ref: contentRef },
             h(
               Command,
               null,
-              h(CommandInput, { "aria-label": "Find command" }),
+              h(CommandInput, {
+                ref: inputRef,
+                "aria-label": "Find command",
+              }),
               h(
                 CommandList,
                 null,
-                h(CommandItem, { value: "open" }, "Open workspace"),
+                h(
+                  CommandItem,
+                  { ref: itemRef, value: "open" },
+                  "Open workspace",
+                ),
               ),
             ),
           ),
@@ -105,6 +115,11 @@ async function registerDomTests() {
       await act(async () => trigger.click());
       const input = document.querySelector<HTMLInputElement>("[cmdk-input]")!;
       expect(input).not.toBeNull();
+      expect(inputRef.current).toBe(input);
+      expect(contentRef.current).toBe(
+        document.querySelector(".popover-content"),
+      );
+      expect(itemRef.current).toBe(document.querySelector("[cmdk-item]"));
       expect(document.activeElement === input).toBe(true);
       await act(async () =>
         input.dispatchEvent(
@@ -119,6 +134,9 @@ async function registerDomTests() {
         async () => await new Promise((resolve) => setTimeout(resolve, 0)),
       );
       expect(document.querySelector("[cmdk-input]") === null).toBe(true);
+      expect(contentRef.current).toBeNull();
+      expect(inputRef.current).toBeNull();
+      expect(itemRef.current).toBeNull();
       expect(document.activeElement === trigger).toBe(true);
     }
     await act(async () => trigger.click());

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { store } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import type { ExistingWorktree, WorktreeList } from "../types";
@@ -49,11 +49,9 @@ export function WorktreeOpenDialog({
     workspaceId: string;
     message: string;
   } | null>(null);
-  const onCloseRef = useRef(onClose);
+  const onCloseEvent = useEffectEvent(onClose);
   const searchRef = useRef<HTMLInputElement>(null);
   const manualTargetRef = useRef<HTMLInputElement>(null);
-
-  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open || !workspaceId) return;
@@ -85,7 +83,7 @@ export function WorktreeOpenDialog({
     );
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape") onCloseEvent();
     };
     window.addEventListener("keydown", onKey);
     return () => {
