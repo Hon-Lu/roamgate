@@ -588,6 +588,9 @@ localhost/LAN token URLs. Config lives in `~/.config/roamgate/roamgate.env` or
 PORT, password, and Herdr settings there, then restart. For local-only installation,
 set `HOST=127.0.0.1` first. On Windows, allow Private networks only if prompted;
 on Linux, `sudo loginctl enable-linger "$USER"` keeps services after logout.
+On macOS, installation checks the configured listener before registering the
+launchd job. If another process owns the port, it reports the conflict and leaves
+the preserved config available for choosing a different port.
 
 ```bash
 curl -fsS http://127.0.0.1:8787/healthz

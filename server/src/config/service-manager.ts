@@ -372,10 +372,38 @@ function servicePassword(contents: string): string {
   return password;
 }
 
-function prepareServiceAccess(configPath: string): ServiceAccess {
+function prepareServiceAccess(
+  configPath: string,
+  launchd: boolean = false,
+): ServiceAccess {
   const contents = readFileSync(configPath, "utf8");
-  const host = readEnvironmentValue(contents, "HOST") || "127.0.0.1";
-  const configuredPort = readEnvironmentValue(contents, "PORT");
+  let host = readEnvironmentValue(contents, "HOST") || "127.0.0.1";
+  let configuredPort = readEnvironmentValue(contents, "PORT");
+  if (launchd) {
+    // Match the LaunchAgent's shell sourcing, including comments and expansion.
+    const result = Bun.spawnSync([
+      "/bin/sh",
+      "-c",
+      'set -a; if [ -f "$1" ]; then . "$1"; fi; printf "\\0%s\\0%s" "${HOST-127.0.0.1}" "${PORT-8787}"',
+      "roamgate-service",
+      configPath,
+    ]);
+    const [, resolvedHost, resolvedPort] = result.stdout
+      .toString()
+      .split("\0")
+      .slice(-3);
+    if (
+      result.exitCode !== 0 ||
+      resolvedHost === undefined ||
+      resolvedPort === undefined
+    ) {
+      throw new Error(
+        `cannot load launchd service config ${configPath}: ${result.stderr.toString().trim() || "shell did not return HOST/PORT"}`,
+      );
+    }
+    host = resolvedHost;
+    configuredPort = resolvedPort;
+  }
   const port = Number(configuredPort || 8787);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error(`invalid PORT in ${configPath}: ${configuredPort}`);
@@ -429,6 +457,41 @@ function printServiceAccess(
       log(
         `LAN: ${withLoginToken(browserUrlFor(ip, access.port, access.tls), access.token)}`,
       );
+    }
+  }
+}
+
+function assertLaunchdListenerAvailable(
+  host: string,
+  port: number,
+  previousJobLoaded: boolean,
+): void {
+  // launchctl bootout can return before the previous process releases its port.
+  const deadline = Date.now() + (previousJobLoaded ? 5_000 : 0);
+  for (;;) {
+    try {
+      const listener = Bun.listen({
+        hostname: host,
+        port,
+        exclusive: true,
+        socket: { data() {} },
+      });
+      listener.stop(true);
+      return;
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause));
+      const code = (cause as NodeJS.ErrnoException | null)?.code;
+      const occupied =
+        code === "EADDRINUSE" || /port .* in use/i.test(error.message);
+      if (!occupied) throw error;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Cannot listen on ${host}:${port}: the port is already in use. ` +
+            "Stop the other process or set PORT to a free port in the preserved roamgate.env, then reinstall the service.",
+          { cause },
+        );
+      }
+      Bun.sleepSync(100);
     }
   }
 }
@@ -643,7 +706,10 @@ function installService(
     join(dirname(legacy.config), "auth-token"),
   );
   const environmentCreated = ensureEnvironmentFile(paths.config);
-  const access = prepareServiceAccess(paths.config);
+  const access = prepareServiceAccess(
+    paths.config,
+    platform === "launchd" && runCommand === defaultRunCommand,
+  );
   if (paths.stdoutLog) mkdirSync(dirname(paths.stdoutLog), { recursive: true });
   const customSystemdExecStart =
     platform === "systemd"
@@ -679,6 +745,10 @@ function installService(
       code = 0;
     }
     if (code === 0) {
+      // Bootstrap registers the job before its child tries to bind the port.
+      if (runCommand === defaultRunCommand) {
+        assertLaunchdListenerAvailable(access.host, access.port, loaded);
+      }
       code = runCommand(["launchctl", "bootstrap", domain, paths.definition]);
     }
   } else {

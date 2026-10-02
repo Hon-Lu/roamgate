@@ -736,6 +736,88 @@ describe("service commands", () => {
     ).toContain("HOST=0.0.0.0");
   });
 
+  for (const syntax of ["inline comment", "variable expansion"]) {
+    for (const occupied of [false, true]) {
+      test(`launchd ${syntax} uses the resolved ${occupied ? "occupied" : "free"} listener`, () => {
+        if (process.platform === "win32") return;
+        const homeDir = tempHome();
+        const paths = resolveServicePaths("launchd", homeDir);
+        const binDir = join(homeDir, "bin");
+        const commandLog = join(homeDir, "commands.log");
+        mkdirSync(binDir);
+        mkdirSync(dirname(paths.config), { recursive: true });
+        const launchctl = join(binDir, "launchctl");
+        writeFileSync(
+          launchctl,
+          `#!/bin/sh
+printf '%s\\n' "$*" >> "$ROAMGATE_TEST_COMMAND_LOG"
+case "$1:$2" in
+  print:gui/501/dev.herdr.herdr-gui|print:gui/501/dev.roamgate) exit 113;;
+  print:gui/501|bootstrap:gui/501) exit 0;;
+  *) exit 1;;
+esac
+`,
+          { mode: 0o755 },
+        );
+        const listener = Bun.listen({
+          hostname: "127.0.0.1",
+          port: 0,
+          exclusive: true,
+          socket: { data() {} },
+        });
+        const port = listener.port;
+        if (!occupied) listener.stop(true);
+        const config =
+          syntax === "inline comment"
+            ? `HOST=127.0.0.1 # local only\nPORT=${port}\n`
+            : `BIND_ADDRESS=127.0.0.1\nBIND_PORT=${port}\nHOST="$BIND_ADDRESS"\nPORT="$BIND_PORT"\nprintf 'config output\\n'\n`;
+        writeFileSync(paths.config, config);
+        try {
+          // Keep the default runner/preflight; only replace the native launchctl.
+          const result = Bun.spawnSync(
+            [
+              process.execPath,
+              "-e",
+              `import { runServiceCommand } from ${JSON.stringify(join(import.meta.dir, "service-manager.ts"))};
+const code = runServiceCommand(["service", "install"], {
+  runtime: {
+    platform: "darwin", homeDir: ${JSON.stringify(homeDir)},
+    execPath: "/opt/roamgate", argv: ["/opt/roamgate"], uid: 501,
+  },
+  getLanIPs: () => [],
+});
+process.exit(typeof code === "number" ? code : 2);`,
+            ],
+            {
+              env: {
+                ...process.env,
+                PATH: `${binDir}:${process.env.PATH ?? ""}`,
+                ROAMGATE_TEST_COMMAND_LOG: commandLog,
+              },
+            },
+          );
+          expect(result.exitCode).toBe(occupied ? 1 : 0);
+          expect(readFileSync(paths.config, "utf8")).toBe(config);
+          const commands = readFileSync(commandLog, "utf8");
+          if (occupied) {
+            expect(result.stderr.toString()).toContain(
+              `Cannot listen on 127.0.0.1:${port}: the port is already in use`,
+            );
+            expect(commands).not.toContain("bootstrap");
+            expect(listener.port).toBe(port);
+          } else {
+            expect(result.stdout.toString()).toContain(
+              `Open: http://localhost:${port}`,
+            );
+            expect(commands).toContain("bootstrap gui/501");
+          }
+        } finally {
+          if (occupied) listener.stop(true);
+        }
+      });
+    }
+  }
+
   test("manages a Windows login task", () => {
     const homeDir = tempHome();
     const appDataDir = join(homeDir, "AppData", "Roaming");

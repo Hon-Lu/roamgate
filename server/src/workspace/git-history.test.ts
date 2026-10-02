@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,9 @@ import {
   readCommitFile,
   readCommitPreview,
 } from "./git-history";
+
+// Scenarios run many real Git commands; each command still has its 5s deadline.
+setDefaultTimeout(30_000);
 
 async function git(root: string, ...args: string[]) {
   const result = await runProcessWithCodeTimeout(
