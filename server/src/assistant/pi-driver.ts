@@ -34,6 +34,10 @@ import {
   workspaceTools,
 } from "./tools";
 import { surfaceAssistantUserError } from "./errors";
+import {
+  LEGACY_AZURE_PROVIDER,
+  registerLegacyAzureProvider,
+} from "./pi-azure-compat";
 
 type AuthPrompt = {
   type: "text" | "secret" | "select" | "manual_code";
@@ -276,6 +280,7 @@ export function createPiDriver(
           allowModelNetwork: false,
           refreshOnCreate: false,
         });
+        await registerLegacyAzureProvider(models);
         initialized.add(source);
         return models;
       })().catch((error) => {
@@ -433,6 +438,7 @@ export function createPiDriver(
       const builtinIds = new Set(
         builtinProviders().map((provider) => provider.id),
       );
+      builtinIds.add(LEGACY_AZURE_PROVIDER);
       // Enumeration must not resolve API keys: Pi supports executable !command keys.
       const stored = new Map(
         (await models.listCredentials())
@@ -519,7 +525,10 @@ export function createPiDriver(
       const { builtinProviders } = await import(
         "@earendil-works/pi-ai/providers/all"
       );
-      if (builtinProviders().some((provider) => provider.id === input.provider))
+      if (
+        input.provider === LEGACY_AZURE_PROVIDER ||
+        builtinProviders().some((provider) => provider.id === input.provider)
+      )
         throw new Error("Use a distinct custom provider identifier");
       const { path, saved } = modelConfiguration(input.credential_source);
       const previous = Object.hasOwn(saved.providers, input.provider)
