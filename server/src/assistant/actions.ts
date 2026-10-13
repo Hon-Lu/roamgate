@@ -12,7 +12,9 @@ import {
 } from "../config/gui-settings";
 import { validateConnectionId } from "../connections/protocol";
 import type { LegacyConnectionRuntime } from "../connections/runtime";
+import { assertUnixHost } from "../connections/unix-only";
 import { checkoutPath } from "../workspace/utils";
+import { surfaceAssistantUserError } from "./errors";
 
 export type AssistantActionPreview = Omit<
   AssistantAction,
@@ -592,6 +594,8 @@ export async function prepareAssistantAction(args: {
             };
       };
     } else if (kind === "create_worktree") {
+      // Git root and hook helpers are Unix-only, unlike native Herdr RPCs.
+      assertUnixHost(runtime, "Ranger worktree creation");
       if (!args.createWorktree)
         throw new Error("Worktree creation is unavailable");
       const branch = text(params.branch);
@@ -1073,8 +1077,9 @@ export async function prepareAssistantAction(args: {
         return execution;
       },
     });
-  } catch {
-    throw new Error(
+  } catch (error) {
+    surfaceAssistantUserError(
+      error,
       "Action preview is unavailable, outside the approved scope, or the target changed.",
     );
   }
