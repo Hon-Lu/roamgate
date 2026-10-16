@@ -1,5 +1,6 @@
 import { loadOrCreateSessionSecret } from "./config/session-secret";
 import {
+  authTokenPrintCommand,
   isShortAuthPassword,
   RECOMMENDED_PASSWORD_LENGTH,
 } from "./config/auth-token";
@@ -190,6 +191,9 @@ const {
   pin: config.pin,
   sessionSecret,
   urlLoginToken: config.generatedAuthToken,
+  tokenCommand:
+    config.generatedAuthTokenPath &&
+    authTokenPrintCommand(config.generatedAuthTokenPath),
   secureCookies: Boolean(config.tls),
 });
 
