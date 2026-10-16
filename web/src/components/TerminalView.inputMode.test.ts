@@ -104,6 +104,7 @@ async function registerDomTests() {
       })),
     },
     panes: [paneA, paneB],
+    tabs: [],
     selectedPaneId: "pane-a",
     status: "connected",
     terminalAttachEpoch: 0,
