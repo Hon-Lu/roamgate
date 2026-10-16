@@ -3,7 +3,11 @@ import { createContext, runInContext } from "node:vm";
 import { type HTMLButtonElement, Window } from "happy-dom";
 import { LOGIN_HTML, renderLoginPage } from "./login-page";
 
-function loginPage(pinEnabled = true) {
+function loginPage(
+  pinEnabled = true,
+  tokenCommand?: string,
+  globals: Record<string, unknown> = {},
+) {
   const window = new Window({
     settings: {
       disableJavaScriptEvaluation: true,
@@ -12,7 +16,7 @@ function loginPage(pinEnabled = true) {
     },
   });
   const document = window.document;
-  document.write(renderLoginPage(pinEnabled));
+  document.write(renderLoginPage(pinEnabled, tokenCommand));
   const calls: { url: string; init: RequestInit }[] = [];
   const responses: (() => Promise<Response>)[] = [];
   const location = {
@@ -23,6 +27,7 @@ function loginPage(pinEnabled = true) {
     },
   };
   const context = createContext({
+    ...globals,
     document,
     location,
     fetch: (url: string, init: RequestInit) => {
@@ -361,5 +366,59 @@ describe("optional PIN login page", () => {
       "/api/login/pin",
     ]);
     expect(page.location.replacements).toHaveLength(1);
+  });
+});
+
+describe("login page token help", () => {
+  test("only token logins explain where to find the token", () => {
+    const command = 'Get-Content "$env:APPDATA\\roamgate\\auth-token"';
+    expect(LOGIN_HTML).not.toContain("token-cmd");
+    for (const pinEnabled of [false, true]) {
+      const page = loginPage(pinEnabled, command);
+      expect(page.document.querySelector("#token-cmd")?.textContent).toBe(
+        command,
+      );
+      const help = page.document.querySelector("details")!;
+      expect(help.open).toBe(false);
+      expect(help.querySelector("a")?.getAttribute("href")).toEndWith(
+        "docs/DEPLOYMENT.md#basic-runtime-configuration",
+      );
+      expect(help.hidden).toBe(pinEnabled);
+      if (pinEnabled) {
+        page.forceSwitch();
+        expect(help.hidden).toBe(false);
+        page.forceSwitch();
+        expect(help.hidden).toBe(true);
+      }
+    }
+  });
+
+  test("escapes the command", () => {
+    const html = renderLoginPage(false, 'cat ~/<b>&"x"');
+    expect(html).toContain("cat ~/&#60;b&#62;&#38;&#34;x&#34;");
+    expect(html).not.toContain("<b>");
+  });
+
+  test("copies the command only in a secure context", async () => {
+    expect(
+      loginPage(
+        false,
+        "cat ~/.config/roamgate/auth-token",
+      ).document.querySelector<HTMLButtonElement>("#copy")?.hidden,
+    ).toBe(true);
+    const copied: string[] = [];
+    const page = loginPage(false, "cat ~/.config/roamgate/auth-token", {
+      isSecureContext: true,
+      navigator: {
+        clipboard: { writeText: async (text: string) => copied.push(text) },
+      },
+      setTimeout,
+      clearTimeout,
+    });
+    const copy = page.document.querySelector<HTMLButtonElement>("#copy")!;
+    expect(copy.hidden).toBe(false);
+    await (copy.onclick as unknown as () => Promise<void>)();
+    expect(copied).toEqual(["cat ~/.config/roamgate/auth-token"]);
+    expect(copy.textContent).toBe("Copied");
   });
 });

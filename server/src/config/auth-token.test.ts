@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertValidAuthPassword,
+  authTokenPrintCommand,
   isShortAuthPassword,
   defaultAuthTokenPath,
   loadOrCreateAuthToken,
@@ -76,6 +77,58 @@ describe("generated authentication token", () => {
     expect(defaultAuthTokenPath(home, "win32", appData)).toBe(
       join(appData, "roamgate", "auth-token"),
     );
+  });
+
+  test("prints the token without revealing the account name", () => {
+    const home = join("C:", "Users", "tester");
+    const appData = join(home, "AppData", "Roaming");
+    expect(
+      authTokenPrintCommand(
+        join(appData, "roamgate", "auth-token"),
+        home,
+        "win32",
+        appData,
+      ),
+    ).toBe('Get-Content "$env:APPDATA\\roamgate\\auth-token"');
+    expect(
+      authTokenPrintCommand(
+        join(home, ".config", "roamgate", "auth-token"),
+        home,
+        "win32",
+        undefined,
+      ),
+    ).toBe('Get-Content "$HOME\\.config\\roamgate\\auth-token"');
+    expect(
+      authTokenPrintCommand(
+        "/home/tester/.config/roamgate/auth-token",
+        "/home/tester",
+        "linux",
+      ),
+    ).toBe("cat ~/.config/roamgate/auth-token");
+    expect(
+      authTokenPrintCommand(
+        "/Users/tester/.config/roamgate/auth-token",
+        "/Users/tester",
+        "darwin",
+      ),
+    ).toBe("cat ~/.config/roamgate/auth-token");
+  });
+
+  test("omits the token command outside the home directory", () => {
+    expect(
+      authTokenPrintCommand(
+        "/srv/roamgate/auth-token",
+        "/home/tester",
+        "linux",
+      ),
+    ).toBeUndefined();
+    expect(
+      authTokenPrintCommand(
+        "/home/testerx/auth-token",
+        "/home/tester",
+        "linux",
+      ),
+    ).toBeUndefined();
   });
 
   test("creates a persistent random token with private permissions", () => {
