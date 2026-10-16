@@ -42,6 +42,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Command,
   Compass,
   FileDiff,
   FolderTree,
@@ -215,6 +216,12 @@ import "./components/markdown.css";
 const AssistantPanel = lazyWithReload("assistant", () =>
   import("./components/AssistantPanel").then((module) => ({
     default: module.AssistantPanel,
+  })),
+);
+
+const ShortcutCheatSheet = lazyWithReload("shortcut-cheatsheet", () =>
+  import("./components/ShortcutLookupDialog").then((module) => ({
+    default: module.ShortcutCheatSheet,
   })),
 );
 
@@ -1359,6 +1366,19 @@ export default function App() {
     [resolvedTheme, terminalThemeSelection, customTerminalThemes],
   );
   const [zenMode, setZenMode] = useState(loadZenMode);
+  const [shortcutCheatSheetOpen, setShortcutCheatSheetOpen] = useState(false);
+  const openShortcutCheatSheet = useCallback(
+    () => setShortcutCheatSheetOpen(true),
+    [],
+  );
+  const closeShortcutCheatSheet = useCallback(
+    () => setShortcutCheatSheetOpen(false),
+    [],
+  );
+  // The sheet is desktop-only; do not let it reappear after a mobile layout.
+  useEffect(() => {
+    if (mobile) setShortcutCheatSheetOpen(false);
+  }, [mobile]);
   const [sidebarHidden, setSidebarHidden] = useState(loadZenMode);
   // What the sidebar was doing before Zen hid it, restored when Zen ends.
   const sidebarBeforeZenRef = useRef(false);
@@ -2990,6 +3010,16 @@ export default function App() {
         document.getElementById(CONFIG_MENU_ID)
       )
         return;
+      // Open but not yet rendered: its chunk is loading, so dismiss it here.
+      if (
+        shortcutCheatSheetOpen &&
+        (e.key === "Escape" || shortcutMatches(e, "shortcuts.show"))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) setShortcutCheatSheetOpen(false);
+        return;
+      }
       if (paneJumpOpen) {
         const paneJumpNavigationKey =
           e.key === "Tab" ||
@@ -3080,6 +3110,13 @@ export default function App() {
         e.preventDefault();
         e.stopPropagation();
         openPaneJumpSearch();
+        return;
+      }
+      if (shortcutMatches(e, "shortcuts.show")) {
+        if (mobile) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) setShortcutCheatSheetOpen(true);
         return;
       }
       if (shortcutMatches(e, "terminal.focus")) {
@@ -3357,6 +3394,7 @@ export default function App() {
     paneJumpSearch,
     selectPaneJumpIndex,
     setInspectorExpanded,
+    shortcutCheatSheetOpen,
     toggleAnnotations,
     toggleAssistant,
     toggleDiffViewer,
@@ -3791,6 +3829,22 @@ export default function App() {
           <ConnectionSwitcher />
         </div>
         <div className="topbar-actions">
+          {mobile ? null : (
+            <div className="topbar-command-group">
+              <button
+                type="button"
+                className={`topbar-button icon-button ${shortcutCheatSheetOpen ? "is-active" : ""}`}
+                aria-label="Show shortcut cheat sheet"
+                title={shortcutTitle(
+                  "Show shortcut cheat sheet",
+                  "shortcuts.show",
+                )}
+                onClick={openShortcutCheatSheet}
+              >
+                <Command size={15} aria-hidden="true" />
+              </button>
+            </div>
+          )}
           <div className="topbar-command-group">
             {!mobile ? assistantEntry : null}
             <CommandCombobox
@@ -3798,6 +3852,7 @@ export default function App() {
               onOpenFileExplorer={openFileExplorer}
               onOpenFile={openFileExplorerFile}
               onOpenDiffViewer={openDiffViewer}
+              onShowShortcuts={mobile ? undefined : openShortcutCheatSheet}
             />
             <ConfigMenu
               key={`${resourceUiKey}:config`}
@@ -3819,6 +3874,7 @@ export default function App() {
               }
               zenMode={zenMode}
               onZenModeChange={applyZenMode}
+              onShowShortcuts={openShortcutCheatSheet}
               onMobileTerminalShortcutsChange={setMobileTerminalShortcuts}
               onMobileTerminalSideShortcutsChange={
                 setMobileTerminalSideShortcuts
@@ -4388,6 +4444,12 @@ export default function App() {
           </div>
         </main>
       </div>
+      {/* Before the tooltip layer, which shares the modal z-index. */}
+      {shortcutCheatSheetOpen && !mobile ? (
+        <Suspense fallback={null}>
+          <ShortcutCheatSheet onClose={closeShortcutCheatSheet} />
+        </Suspense>
+      ) : null}
       <GlobalTooltip />
       {viewportDebugEnabled ? <ViewportDebugOverlay /> : null}
       <PopupOverlay
