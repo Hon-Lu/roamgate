@@ -4090,10 +4090,17 @@ export default function App() {
               activateTerminalSurface();
               setTerminalComposerOpen(true);
             });
-            // Give the dock focus; Composer's editor opens the keyboard on tap.
-            document
-              .querySelector<HTMLElement>(".terminal-composer")
-              ?.focus({ preventScroll: true });
+            // The tap is the request to type. The dock routes Direct to the
+            // terminal; in Composer, focus the draft within this gesture so
+            // phones raise the keyboard in one tap. Later dock focus (sends,
+            // commands, uploads) stays neutral.
+            const dock =
+              document.querySelector<HTMLElement>(".terminal-composer");
+            dock?.focus({ preventScroll: true });
+            if (dock?.dataset.inputMode === "composer")
+              dock
+                .querySelector<HTMLElement>(".terminal-composer-input")
+                ?.focus({ preventScroll: true });
           }}
         >
           <SquarePen size={20} />

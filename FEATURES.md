@@ -181,7 +181,9 @@ Drafts stay in this browser and re-anchor to changed files on refresh.
   dragged to either edge.
 - The **Type** button opens an input dock with two modes: **Composer** (edit a
   draft with IME, dictation, and images; **Send** adds Enter) and **Direct**
-  (keys go straight to the terminal).
+  (keys go straight to the terminal). Its tap raises the keyboard in either
+  mode; afterwards, sends, scrolling, and shortcut actions leave a dismissed
+  keyboard closed.
 - The `>_` button in Composer offers slash commands for Claude Code, Codex, Pi,
   Kimi Code, Grok Build, and Antigravity CLI.
 - Install as a PWA for an app-style window; see

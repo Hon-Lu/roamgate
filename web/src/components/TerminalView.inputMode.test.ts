@@ -298,6 +298,7 @@ async function registerDomTests() {
     mobileShortcuts = [[], []];
   });
   afterEach(async () => {
+    document.documentElement.classList.remove("keyboard-open");
     if (root) await act(async () => root?.unmount());
     root = null;
     clearTerminalComposerDraft(draftKey);
@@ -379,7 +380,8 @@ async function registerDomTests() {
   }
   async function typeGesture() {
     // Match App's Type click: open+commit, then synchronously focus the dock
-    // root, whose handler routes Direct focus, all in one gesture.
+    // root, whose handler routes Direct focus, and in Composer the draft,
+    // all in one gesture.
     await act(async () => {
       flushSync(() => {
         open = true;
@@ -388,6 +390,10 @@ async function registerDomTests() {
       const target = container.querySelector<HTMLElement>(".terminal-composer");
       expect(target).not.toBeNull();
       target!.focus({ preventScroll: true });
+      if (target!.dataset.inputMode === "composer")
+        target!
+          .querySelector<HTMLElement>(".terminal-composer-input")
+          ?.focus({ preventScroll: true });
       // Assert during the gesture, before act can flush any later work.
       if (
         selectedMode() === "direct" &&
@@ -667,6 +673,9 @@ async function registerDomTests() {
         await mount();
         if (mode !== "closed") await typeGesture();
         if (mode === "direct") await choose("direct");
+        // Type's tap raised the keyboard in Composer's draft; App marks it.
+        if (mode === "composer")
+          document.documentElement.classList.add("keyboard-open");
         await frame(mouseReporting);
         const term = currentTerminal();
         term.modes.mouseTrackingMode = mouseReporting ? "drag" : "none";
@@ -961,17 +970,13 @@ async function registerDomTests() {
     },
   );
 
-  test("Type keeps Composer neutral until its native draft is explicitly focused", async () => {
+  test("Type focuses Composer's draft in one tap, and later work stays neutral", async () => {
     await mount();
     await typeGesture();
     expect(selectedMode()).toBe("composer");
-    expect(document.activeElement).toBe(
-      container.querySelector(".terminal-composer"),
-    );
     const editor = container.querySelector<HTMLTextAreaElement>(
       '[aria-label="Terminal input draft"]',
     )!;
-    act(() => editor.focus());
     expect(document.activeElement).toBe(editor);
     act(() => editor.blur());
     const focused = document.activeElement;
