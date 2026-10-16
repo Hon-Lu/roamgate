@@ -7,6 +7,7 @@ import { store, useEndpointCreationReason } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
+import { useSuggestedName } from "./useSuggestedName";
 import "./CreateWorkspaceDialog.css";
 
 export function CreateWorkspaceDialog({
@@ -22,7 +23,12 @@ export function CreateWorkspaceDialog({
 }) {
   const createReason = useEndpointCreationReason("workspace.create");
   const client = useConnectionClient();
-  const [label, setLabel] = useState("");
+  const labelRef = useRef<HTMLInputElement>(null);
+  const [label, setLabel, namePending] = useSuggestedName(
+    open,
+    initialName?.trim() || luckyWorkspaceName,
+    labelRef,
+  );
   const [cwd, setCwd] = useState("");
   const [pathState, setPathState] = useState<{
     client: ConnectionClient;
@@ -33,14 +39,12 @@ export function CreateWorkspaceDialog({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const pendingSubmit = useRef<symbol | null>(null);
-  const labelRef = useRef<HTMLInputElement>(null);
   const cwdRef = useRef<HTMLInputElement>(null);
   const pathHintId = useId();
   const onCloseEvent = useEffectEvent(onClose);
 
   useEffect(() => {
     if (!open) return;
-    setLabel(initialName?.trim() || luckyWorkspaceName());
     setCwd(initialCwd?.trim() ?? "");
     const cancelFocus = focusDialogElement(labelRef.current, { select: true });
     const onKey = (e: KeyboardEvent) => {
@@ -96,6 +100,7 @@ export function CreateWorkspaceDialog({
     e.preventDefault();
     if (
       createReason ||
+      namePending ||
       pendingSubmit.current ||
       checking ||
       pathError ||
@@ -229,7 +234,13 @@ export function CreateWorkspaceDialog({
           </button>
           <button
             type="submit"
-            disabled={!!createReason || creating || checking || !!pathError}
+            disabled={
+              !!createReason ||
+              namePending ||
+              creating ||
+              checking ||
+              !!pathError
+            }
             title={createReason ?? undefined}
           >
             {creating ? "Creating..." : "Create"}
