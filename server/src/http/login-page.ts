@@ -101,7 +101,7 @@ export function renderLoginPage(
       <div class="help-body">
         <p>On the computer running Roamgate, run this to print it:</p>
         <div class="cmd"><code id="token-cmd">${escapeHtml(tokenCommand)}</code><button class="copy" id="copy" type="button" hidden>Copy</button></div>
-        <p>On a phone? Run <code>roamgate url --qr</code> on that computer and scan the code to log in.</p>
+        <p>On a phone? For an installed Roamgate user service, run <code>roamgate url --qr</code> on that computer and scan the code to log in. This uses the service configuration. For a foreground instance, keep using this instance's address and read its token on the host with the command above.</p>
         <p class="options">Prefer a password or PIN you can remember? <a href="${LOGIN_OPTIONS_URL}" target="_blank" rel="noopener noreferrer">See login options</a></p>
       </div>
     </details>

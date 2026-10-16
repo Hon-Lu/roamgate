@@ -393,6 +393,32 @@ describe("login page token help", () => {
     }
   });
 
+  test.each([false, true])(
+    "phone help distinguishes the user service from foreground instances (PIN: %s)",
+    (pinEnabled) => {
+      const page = loginPage(pinEnabled, "cat ~/.config/roamgate/auth-token");
+      if (pinEnabled) page.forceSwitch();
+      const help = page.document.querySelector("#help")!;
+      expect(help.hasAttribute("hidden")).toBe(false);
+      const phoneHelp = [...help.querySelectorAll("p")].find((p) =>
+        p.textContent.includes("On a phone?"),
+      )!;
+      expect(phoneHelp.querySelector("code")?.textContent).toBe(
+        "roamgate url --qr",
+      );
+      expect(phoneHelp.textContent).toContain(
+        "For an installed Roamgate user service",
+      );
+      expect(phoneHelp.textContent).toContain("uses the service configuration");
+      expect(phoneHelp.textContent).toContain(
+        "For a foreground instance, keep using this instance's address",
+      );
+      expect(phoneHelp.textContent).toContain(
+        "read its token on the host with the command above",
+      );
+    },
+  );
+
   test("escapes the command", () => {
     const html = renderLoginPage(false, 'cat ~/<b>&"x"');
     expect(html).toContain("cat ~/&#60;b&#62;&#38;&#34;x&#34;");

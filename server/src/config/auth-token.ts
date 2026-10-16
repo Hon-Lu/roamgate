@@ -49,8 +49,11 @@ export function defaultAuthTokenPath(
 }
 
 function pathUnder(path: string, root: string | undefined): string | null {
-  if (!root || !path.startsWith(root)) return null;
-  const rest = path.slice(root.length);
+  if (!root) return null;
+  // Keep the separator boundary check even when the root already ends in one.
+  const prefix = root.replace(/[\\/]+$/, "");
+  if (!path.startsWith(prefix)) return null;
+  const rest = path.slice(prefix.length);
   return /^[\\/]/.test(rest) ? rest.slice(1) : null;
 }
 

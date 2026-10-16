@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import {
   assertValidAuthPassword,
   authTokenPrintCommand,
@@ -112,6 +112,91 @@ describe("generated authentication token", () => {
         "darwin",
       ),
     ).toBe("cat ~/.config/roamgate/auth-token");
+  });
+
+  test("prints the default token command with trailing HOME separators", () => {
+    const home = tempHome();
+    for (const suffix of [sep, sep.repeat(2)]) {
+      const homeWithSeparator = home + suffix;
+      const path = defaultAuthTokenPath(
+        homeWithSeparator,
+        process.platform,
+        join(home, "AppData", "Roaming"),
+      );
+      expect(
+        authTokenPrintCommand(path, homeWithSeparator, process.platform, ""),
+      ).toBe(
+        process.platform === "win32"
+          ? 'Get-Content "$HOME\\AppData\\Roaming\\roamgate\\auth-token"'
+          : "cat ~/.config/roamgate/auth-token",
+      );
+    }
+  });
+
+  test("handles filesystem-root HOME without losing the boundary", () => {
+    expect(
+      authTokenPrintCommand("/.config/roamgate/auth-token", "/", "linux"),
+    ).toBe("cat ~/.config/roamgate/auth-token");
+    expect(
+      authTokenPrintCommand("relative/auth-token", "/", "linux"),
+    ).toBeUndefined();
+  });
+
+  // These are command-string tests, not execution in a Windows shell.
+  test("prints Windows commands with trailing APPDATA or HOME separators", () => {
+    const home = "C:\\Users\\tester";
+    const appData = `${home}\\AppData\\Roaming`;
+    for (const suffix of ["\\", "\\\\", "/"]) {
+      expect(
+        authTokenPrintCommand(
+          `${appData}\\roamgate\\auth-token`,
+          home,
+          "win32",
+          appData + suffix,
+        ),
+      ).toBe('Get-Content "$env:APPDATA\\roamgate\\auth-token"');
+      expect(
+        authTokenPrintCommand(
+          `${home}\\.config\\roamgate\\auth-token`,
+          home + suffix,
+          "win32",
+          "",
+        ),
+      ).toBe('Get-Content "$HOME\\.config\\roamgate\\auth-token"');
+      expect(
+        authTokenPrintCommand(
+          `${appData}Extra\\auth-token`,
+          "C:\\OtherUser",
+          "win32",
+          appData + suffix,
+        ),
+      ).toBeUndefined();
+    }
+  });
+
+  test("keeps adjacent prefixes and unsafe shell paths omitted", () => {
+    expect(
+      authTokenPrintCommand(
+        "/home/tester-other/auth-token",
+        "/home/tester/",
+        "linux",
+      ),
+    ).toBeUndefined();
+    for (const name of ["token name", "token;echo", "token$HOME"]) {
+      expect(
+        authTokenPrintCommand(`/home/tester/${name}`, "/home/tester/", "linux"),
+      ).toBeUndefined();
+    }
+    for (const name of ['token"', "token`", "token$HOME"]) {
+      expect(
+        authTokenPrintCommand(
+          `C:\\Users\\tester\\${name}`,
+          "C:\\Users\\tester\\",
+          "win32",
+          "",
+        ),
+      ).toBeUndefined();
+    }
   });
 
   test("omits the token command outside the home directory", () => {
