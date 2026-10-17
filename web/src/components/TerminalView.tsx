@@ -17,6 +17,7 @@ import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../layoutPreferences";
 import { terminalFontOptions } from "../appearance";
 import { detectShortcutPlatform } from "../shortcutBindings";
 import { PaneDragHandle, PaneMoveMenu } from "./PaneMoveMenu";
+import { useSystemBack } from "../systemBack";
 import {
   getShortcutSnapshot,
   shortcutMatches,
@@ -312,6 +313,7 @@ export type TerminalWorkspaceFileRequest = {
 
 export function TerminalView({
   paneId,
+  visible = true,
   terminalTheme,
   terminalFontFamily,
   terminalFontScale,
@@ -325,6 +327,7 @@ export function TerminalView({
   onOpenWorkspaceFile,
 }: {
   paneId?: string;
+  visible?: boolean;
   terminalTheme: ITheme;
   terminalFontFamily: string;
   terminalFontScale: number;
@@ -599,6 +602,11 @@ export function TerminalView({
       onComposerOpenChange?.(open);
     },
     [controlledComposerOpen, onComposerOpenChange],
+  );
+  useSystemBack(
+    visible && composerOpen && isActivePane,
+    () => setComposerOpen(false),
+    "panel",
   );
   const agentHistoryOpen = controlledAgentHistoryOpen ?? localAgentHistoryOpen;
   const setAgentHistoryOpen = useCallback(
