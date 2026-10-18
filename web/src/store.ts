@@ -2426,13 +2426,26 @@ function movePaneTo(
       // A move can reissue the pane ID, so follow the one Herdr reports.
       const movedPaneId =
         typeof moved?.pane?.pane_id === "string" ? moved.pane.pane_id : paneId;
-      if (swapWithPaneId)
-        await lease.client.call("pane.swap", {
-          source_pane_id: movedPaneId,
-          target_pane_id: swapWithPaneId,
-        });
       if (browserSelectionIsCurrent(navigation))
         adoptBrowserTarget(lease, { pane: moved?.pane });
+      if (swapWithPaneId) {
+        try {
+          await lease.client.call("pane.swap", {
+            source_pane_id: movedPaneId,
+            target_pane_id: swapWithPaneId,
+          });
+        } catch (error) {
+          // The move already landed, so report only the side that failed.
+          if (leaseIsCurrent(lease))
+            setForConnection(lease, {
+              notice: {
+                kind: "error",
+                message: "Pane moved to the other side",
+                detail: (error as Error).message,
+              },
+            });
+        }
+      }
       return result;
     },
     {
@@ -3923,6 +3936,25 @@ export const store = {
       type: "new_tab",
       workspace_id: pane.workspace_id,
     });
+  },
+
+  /**
+   * Move a pane beside the pane its destination tab would show: this browser's
+   * remembered pane in browser-local mode, otherwise Herdr's focused pane.
+   */
+  movePaneToTab(paneId: string, tabId: string) {
+    const panes = state.panes.filter((pane) => pane.tab_id === tabId);
+    const remembered =
+      state.navigationMode === "browser-local"
+        ? state.browserNavigation.paneIds[tabId]
+        : undefined;
+    const anchor =
+      panes.find((pane) => pane.pane_id === remembered) ??
+      panes.find((pane) => pane.focused) ??
+      panes[0];
+    return anchor
+      ? store.movePaneBeside(paneId, anchor.pane_id, "right")
+      : Promise.resolve();
   },
 
   /**

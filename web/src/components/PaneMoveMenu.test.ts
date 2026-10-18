@@ -12,7 +12,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { store } from "../store";
 import { terminalFocusBlockedByOverlay } from "../terminalFocus";
-import type { Pane, PaneLayout } from "../types";
+import type { Pane, PaneLayout, Tab } from "../types";
 import { PaneDragHandle, PaneMoveMenu } from "./PaneMoveMenu";
 
 // DOM globals must not leak into the other store and terminal tests.
@@ -89,8 +89,12 @@ function registerDomTests() {
     }
   });
 
-  async function mount() {
-    snapshot = { ...store.get(), layout };
+  async function mount(mountLayout = layout, tabs?: Tab[]) {
+    snapshot = {
+      ...store.get(),
+      layout: mountLayout,
+      ...(tabs ? { tabs } : {}),
+    };
     swaps = [];
     restore = [];
     const get = spyOn(store, "get").mockImplementation(() => snapshot);
@@ -124,7 +128,7 @@ function registerDomTests() {
           { className: "terminal-shell" },
           createElement(PaneDragHandle, {
             paneId: "a",
-            layout,
+            layout: mountLayout,
             onPointerDown: (e) => e.preventDefault(),
           }),
           createElement(
@@ -132,7 +136,7 @@ function registerDomTests() {
             { className: "terminal-pane-toolbar" },
             createElement(PaneMoveMenu, {
               paneId: "a",
-              layout,
+              layout: mountLayout,
               onPointerDown: (e) => e.preventDefault(),
             }),
           ),
@@ -443,6 +447,11 @@ function registerDomTests() {
         moves.push(["beside", ...args]);
       },
     );
+    const toTab = spyOn(store, "movePaneToTab").mockImplementation(
+      async (...args) => {
+        moves.push(["to-tab", ...args]);
+      },
+    );
     const newTab = spyOn(store, "movePaneToNewTab").mockImplementation(
       async (...args) => {
         moves.push(["new-tab", ...args]);
@@ -455,6 +464,7 @@ function registerDomTests() {
     );
     restore.push(
       () => beside.mockRestore(),
+      () => toTab.mockRestore(),
       () => newTab.mockRestore(),
       () => focus.mockRestore(),
     );
@@ -489,7 +499,7 @@ function registerDomTests() {
     await pointer("pointerup", 120);
     clean();
     expect(moves).toEqual([
-      ["beside", "a", "x", "right"],
+      ["to-tab", "a", "other"],
       ["new-tab", "a"],
     ]);
     expect(swaps).toEqual([]);
@@ -511,6 +521,10 @@ function registerDomTests() {
       jest.advanceTimersByTime(599);
       expect(moves).toEqual([]);
       jest.advanceTimersByTime(1);
+      expect(moves).toEqual([["focus", "other"]]);
+      // A tab that is still opening is not asked to open again.
+      await pointer("pointermove", 121);
+      jest.advanceTimersByTime(600);
       expect(moves).toEqual([["focus", "other"]]);
       // Opening the tab replaces the layout and unmounts the source handle.
       snapshot = {
@@ -560,5 +574,30 @@ function registerDomTests() {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test("a tab's only pane can be dragged to a tab but not swapped by key", async () => {
+    await mount({ ...layout, panes: layout.panes.slice(0, 1) }, [
+      { tab_id: "tab", workspace_id: "workspace" } as Tab,
+      { tab_id: "other", workspace_id: "workspace" } as Tab,
+    ]);
+    expect(button.getAttribute("aria-keyshortcuts")).toBeNull();
+    const moves: unknown[] = [];
+    const move = spyOn(store, "movePane").mockImplementation(
+      async (...args) => {
+        moves.push(args);
+      },
+    );
+    restore.push(() => move.mockRestore());
+    await act(async () =>
+      button.dispatchEvent(
+        new browser.KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          bubbles: true,
+          cancelable: true,
+        }) as unknown as KeyboardEvent,
+      ),
+    );
+    expect(moves).toEqual([]);
   });
 }

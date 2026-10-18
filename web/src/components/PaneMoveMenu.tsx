@@ -105,6 +105,8 @@ export function PaneDragHandle({
     let hint: HTMLSpanElement | null = null;
     let openTabTimer: ReturnType<typeof setTimeout> | null = null;
     let openTabId: string | undefined;
+    // The tab last asked to open, so a slow switch does not re-arm the timer.
+    let requestedTabId: string | undefined;
     const session = { cancel: () => cleanup(), leftTab: false };
     const currentSession = () => {
       const current = store.get();
@@ -266,12 +268,19 @@ export function PaneDragHandle({
       setTarget(findTarget(event));
       const tabId = hoveredTabId(event);
       if (tabId !== openTabId) clearOpenTabTimer();
-      if (tabId && tabId !== store.get().layout?.tab_id && !openTabTimer) {
+      if (tabId !== requestedTabId) requestedTabId = undefined;
+      if (
+        tabId &&
+        tabId !== requestedTabId &&
+        tabId !== store.get().layout?.tab_id &&
+        !openTabTimer
+      ) {
         openTabId = tabId;
         openTabTimer = setTimeout(() => {
           openTabTimer = null;
           openTabId = undefined;
           if (!currentSession()) return cleanup();
+          requestedTabId = tabId;
           session.leftTab ||= tabId !== sourceTabId;
           void store.focusTab(tabId);
         }, TAB_OPEN_DELAY_MS);
@@ -302,13 +311,7 @@ export function PaneDragHandle({
       else if (dropped.kind === "place")
         void store.movePaneBeside(paneId, dropped.paneId, dropped.side);
       else if (dropped.kind === "new-tab") void store.movePaneToNewTab(paneId);
-      else {
-        const panes = store
-          .get()
-          .panes.filter((pane) => pane.tab_id === dropped.tabId);
-        const anchor = panes.find((pane) => pane.focused) ?? panes[0];
-        if (anchor) void store.movePaneBeside(paneId, anchor.pane_id, "right");
-      }
+      else void store.movePaneToTab(paneId, dropped.tabId);
     };
     const cancel = (event: PointerEvent) => {
       if (event.pointerId === pointerId) cleanup();
@@ -335,16 +338,25 @@ export function PaneDragHandle({
 
   if (!layout || layout.zoomed || (layout.panes.length < 2 && !otherTabs))
     return null;
+  // A tab's only pane has no neighbor to swap with, so it can only be dragged.
+  const canSwap = layout.panes.length > 1;
 
   return (
     <button
       type="button"
       className="pane-drag-handle"
-      title="Drag to swap panes or onto a tab to move (arrow keys to move)"
+      title={
+        canSwap
+          ? "Drag to swap panes or onto a tab to move (arrow keys to move)"
+          : "Drag onto a tab to move"
+      }
       aria-label="Drag pane"
-      aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+      aria-keyshortcuts={
+        canSwap ? "ArrowLeft ArrowRight ArrowUp ArrowDown" : undefined
+      }
       onPointerDown={startDrag}
       onKeyDown={(event) => {
+        if (!canSwap) return;
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
           return;
         const direction = DIRECTIONS.find(

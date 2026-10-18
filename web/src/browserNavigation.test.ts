@@ -611,6 +611,56 @@ describe("store browser-local navigation", () => {
     });
   });
 
+  test("a pane dropped on a tab lands beside that tab's remembered pane", async () => {
+    await withBrowserStore(async (calls) => {
+      const current = store.get();
+      __storeTesting.replaceState({
+        ...current,
+        browserNavigation: {
+          ...current.browserNavigation,
+          paneIds: { ...current.browserNavigation.paneIds, a1: "a1q" },
+        },
+      });
+      await store.movePaneToTab("a2p", "a1");
+      expect(
+        calls
+          .filter((call) => call.method === "pane.move")
+          .map((call) => call.params.destination),
+      ).toEqual([
+        { type: "tab", tab_id: "a1", split: "right", target_pane_id: "a1q" },
+      ]);
+    });
+  });
+
+  test("a failed swap after a move reports the side, not the move", async () => {
+    await withBrowserStore(async (calls, topology) => {
+      const originalConnection = bridge.connection;
+      bridge.connection = (connectionId, generation) => {
+        const client = originalConnection(connectionId, generation);
+        return {
+          ...client,
+          call: async (method, params) => {
+            const result = await client.call(method, params);
+            if (method === "pane.swap") throw new Error("swap refused");
+            return method === "pane.move"
+              ? {
+                  move_result: { pane: { ...topology.panes[0], tab_id: "a2" } },
+                }
+              : result;
+          },
+        };
+      };
+      await store.movePaneBeside("a1p", "a2p", "left");
+      expect(calls.map((call) => call.method)).toContain("pane.swap");
+      expect(store.get().notice).toMatchObject({
+        kind: "error",
+        message: "Pane moved to the other side",
+        detail: "swap refused",
+      });
+      expect(store.get().browserNavigation.tabIds.a).toBe("a2");
+    });
+  });
+
   test.each(["workspace", "tab", "agent"])(
     "%s selection renders the target pane while its layout is deferred",
     async (route) => {
