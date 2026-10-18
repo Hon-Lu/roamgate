@@ -124,7 +124,7 @@ describe("native file upload connection lifetime", () => {
   });
 
   test.each([200, 409])(
-    "discards a response after reconnect (HTTP %s)",
+    "retains successful paths but rejects stale failures (HTTP %s)",
     async (status) => {
       let current = true;
       globalThis.fetch = (async () => {
@@ -136,13 +136,20 @@ describe("native file upload connection lifetime", () => {
           { status },
         );
       }) as unknown as typeof fetch;
-      await expect(
-        uploadTerminalFile({ ...client, isCurrent: () => current }, image),
-      ).rejects.toThrow("connection changed during upload");
+      const result = uploadTerminalFile(
+        { ...client, isCurrent: () => current },
+        image,
+      );
+      if (status === 200)
+        await expect(result).resolves.toBe("/tmp/old-host.txt");
+      else
+        await expect(result).rejects.toThrow(
+          "connection changed during upload",
+        );
     },
   );
 
-  test("discards a response if the connection changes while decoding it", async () => {
+  test("returns a successful path for caller recovery if connection changes while decoding", async () => {
     let current = true;
     globalThis.fetch = (async () => ({
       ok: true,
@@ -153,6 +160,6 @@ describe("native file upload connection lifetime", () => {
     })) as unknown as typeof fetch;
     await expect(
       uploadTerminalFile({ ...client, isCurrent: () => current }, image),
-    ).rejects.toThrow("connection changed during upload");
+    ).resolves.toBe("/tmp/old-host.txt");
   });
 });

@@ -1328,12 +1328,10 @@
   min-height: 44px;
 }
 
+/* The global input rail below Ranger/Settings owns the bottom safe area;
+   retain only the page's normal spacing, not a second home-indicator inset. */
 .assistant-panel.is-mobile .assistant-settings-save {
-  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
-}
-
-.assistant-panel.is-mobile .assistant-panel-footer {
-  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  padding-bottom: 10px;
 }
 
 .assistant-panel.is-mobile .assistant-compose-actions > button {

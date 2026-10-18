@@ -540,6 +540,11 @@
 /* Keep mobile styling in sync with the saved layout and URL override. */
 :where(html[data-layout="mobile"]) {
   .app {
+    /* Native editor focus must not scroll the whole shell at CSS zoom. */
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
     height: var(--app-height, var(--app-viewport-height, 100dvh));
     min-height: var(--app-height, var(--app-viewport-height, 100dvh));
     transform: translateY(var(--app-viewport-offset-top, 0px));
@@ -606,6 +611,9 @@
     color: var(--text-strong);
   }
 
+  /* This flex child ends at the in-flow global input rail. All full-page
+     surfaces inherit its remaining height; no rail/keyboard inset belongs
+     on the pages themselves. App and the rail own those compensations. */
   .body {
     grid-template-columns: 1fr !important;
     padding: 0;
@@ -686,12 +694,6 @@
     align-items: baseline;
     justify-content: center;
     gap: 6px;
-  }
-
-  /* With the composer open the shell stacks its children vertically, so the
-     terminal shrinks to make room instead of being covered by an overlay. */
-  .terminal-shell:has(.terminal-composer) {
-    flex-direction: column;
   }
 }
 
@@ -982,7 +984,12 @@ html:not([data-layout="mobile"])
     display: none;
   }
 
-  .body:is(.mobile-view-files, .mobile-view-changes, .mobile-view-history) {
+  .body:is(
+      .mobile-view-files,
+      .mobile-view-changes,
+      .mobile-view-commits,
+      .mobile-view-history
+    ) {
     .workspace-terminal-surface {
       display: none;
     }

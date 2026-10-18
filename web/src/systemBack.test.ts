@@ -96,8 +96,13 @@ async function registerDomTests() {
   history.pushState({ roamgateBack: true }, "");
   const { useSystemBack } = await import("./systemBack");
 
-  type Name = "sheet" | "composer" | "files";
-  const levels = { sheet: "popup", composer: "panel", files: "panel" } as const;
+  type Name = "sheet" | "more" | "composer" | "files";
+  const levels = {
+    sheet: "popup",
+    more: "popup",
+    composer: "panel",
+    files: "panel",
+  } as const;
   let open = new Set<Name>();
   let closed: Name[] = [];
   const container = document.createElement("div");
@@ -128,6 +133,7 @@ async function registerDomTests() {
           createElement(Layer, { name: "composer" }),
         ),
         createElement(Layer, { name: "files" }),
+        createElement(Layer, { name: "more" }),
       ),
     );
   }
@@ -198,6 +204,26 @@ async function registerDomTests() {
     expect(closed).toEqual(["sheet"]);
     expect([open.has("composer"), guarded()]).toEqual([true, true]);
     await set([]);
+    expect([at(), guarded()]).toEqual(["/b", false]);
+    await userBack();
+    expect(at()).toBe("/a");
+  });
+
+  test("Tabs and More replacement shares one Back guard above the current view", async () => {
+    await start();
+    await set(["files", "sheet"]);
+    const guardState = browser.history.state;
+    const guardLength = browser.history.length;
+    await set(["files", "more"]);
+    expect(browser.history.state).toBe(guardState);
+    expect(browser.history.length).toBe(guardLength);
+    await set(["files", "sheet"]);
+    expect(browser.history.state).toBe(guardState);
+    await userBack();
+    expect(closed).toEqual(["sheet"]);
+    expect([...open]).toEqual(["files"]);
+    await userBack();
+    expect(closed).toEqual(["sheet", "files"]);
     expect([at(), guarded()]).toEqual(["/b", false]);
     await userBack();
     expect(at()).toBe("/a");

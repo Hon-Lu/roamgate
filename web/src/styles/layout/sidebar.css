@@ -43,7 +43,8 @@
   .sidebar-content {
     gap: 0;
     height: 100%;
-    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    /* The global input rail is a sibling of .body, not an overlay. */
+    padding-bottom: 0;
   }
 
   .body:not(.mobile-view-workspaces) .sidebar-content {

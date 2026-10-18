@@ -1,3 +1,4 @@
+import { useCloseGlobalMenuForDialog } from "./useCloseGlobalMenuForDialog";
 import {
   shortcutMatches,
   shortcutTitle,
@@ -256,6 +257,7 @@ export function CommandCombobox({
     shallowEqual,
   );
   const [open, setOpen] = useState(false);
+  useCloseGlobalMenuForDialog(open, setOpen);
   const [search, setSearch] = useState("");
   const [selectedActionValue, setSelectedActionValue] = useState("");
   const [selectedActionSearch, setSelectedActionSearch] = useState("");
@@ -1066,6 +1068,10 @@ export function CommandCombobox({
         <PopoverContent
           className="command-popover"
           align="end"
+          onCloseAutoFocus={(event) => {
+            if (document.querySelector(".modal-backdrop:not([hidden])"))
+              event.preventDefault();
+          }}
           onKeyDownCapture={(event) => {
             runCommandNumberShortcut(
               event,
