@@ -1,6 +1,5 @@
 import { Pin, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   shallowEqual,
   store,
@@ -10,15 +9,15 @@ import {
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { summarizeTabAgents } from "./agentSession";
 import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
+import { focusIfUnchanged } from "./dialogFocus";
 import { requestCloseTab, tabName } from "./TabBar";
 import { orderTabsForDisplay, setTabPinned, useTabPins } from "../tabPins";
 import "./MobileTabSheet.css";
 
 /**
- * Bottom-sheet tab switcher for narrow layouts. The tab strip hides itself on
- * mobile when a workspace has a single tab, so this sheet is the touch
- * affordance for creating, switching, and closing tabs there.
+ * Non-modal tab popup beside More, inside the app stacking context so the
+ * persistent navigation rail remains usable. Also provides tab actions when
+ * the single-tab strip is hidden on narrow layouts.
  */
 export function MobileTabSheet({
   open,
@@ -32,6 +31,7 @@ export function MobileTabSheet({
   const s = useStoreSelector(
     (state) => ({
       activeConnectionId: state.activeConnectionId,
+      connectionGeneration: state.connectionGeneration,
       panes: state.panes,
       tabs: state.tabs,
       workspaces: state.workspaces,
@@ -42,6 +42,24 @@ export function MobileTabSheet({
   const onCloseRef = useRef(onClose);
   const transitionPendingRef = useRef(false);
   const [transitionPending, setTransitionPending] = useState(false);
+  // A completion belongs to this opening and connection, not a later popup
+  // (or More) reached while the request was in flight.
+  const scope = JSON.stringify([
+    s.activeConnectionId,
+    s.connectionGeneration,
+    s.workspaces.find((w) => w.focused)?.workspace_id,
+  ]);
+  const openingRef = useRef({ open, scope });
+  if (openingRef.current.open !== open || openingRef.current.scope !== scope)
+    openingRef.current = { open, scope };
+
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const closeIfIdle = () => {
     if (!transitionPendingRef.current) onClose();
@@ -52,8 +70,15 @@ export function MobileTabSheet({
     if (transitionPendingRef.current) return;
     transitionPendingRef.current = true;
     setTransitionPending(true);
+    const opening = openingRef.current;
     try {
       await operation();
+      if (
+        !mountedRef.current ||
+        opening !== openingRef.current ||
+        !openingRef.current.open
+      )
+        return;
       onClose();
       onShowSession();
     } finally {
@@ -77,52 +102,57 @@ export function MobileTabSheet({
 
   useEffect(() => {
     if (!open) return;
-    const cancelFocus = focusDialogElement(sheetRef.current);
+    const sheet = sheetRef.current;
+    // Focus once, without retries that could steal subsequent keyboard or
+    // navigation focus. Never focus an editor (or reopen the phone keyboard).
+    sheet
+      ?.querySelector<HTMLButtonElement>("button")
+      ?.focus({ preventScroll: true });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       // Let stacked dialogs (e.g. the close-tab confirmation) handle Escape.
-      if (
-        document.querySelector(
-          ".modal-backdrop:not(.mobile-tab-sheet-backdrop)",
-        )
-      )
-        return;
+      if (document.querySelector(".modal-backdrop")) return;
       event.preventDefault();
       event.stopPropagation();
       onCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () => {
-      cancelFocus();
       window.removeEventListener("keydown", onKeyDown, { capture: true });
+      const source = document.activeElement;
+      if (source === document.body || (source && sheet?.contains(source)))
+        focusIfUnchanged(document.querySelector(".mobile-appbar-tabs"), source);
     };
   }, [open]);
 
-  if (!open || !focusedWs) return null;
+  if (!open) return null;
 
-  return createPortal(
-    <div
-      className="modal-backdrop mobile-tab-sheet-backdrop"
-      onMouseDown={closeIfIdle}
-    >
+  return (
+    <>
+      <button
+        type="button"
+        className="mobile-more-backdrop mobile-tab-sheet-backdrop"
+        aria-label="Close tab switcher"
+        onClick={closeIfIdle}
+      />
       <div
         ref={sheetRef}
         className="mobile-tab-sheet"
+        id="mobile-tab-options"
         role="dialog"
-        aria-modal="true"
         aria-label="Tabs"
         aria-busy={transitionPending}
         tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="mobile-tab-sheet-head">
-          <h3>Tabs</h3>
+        <div className="mobile-tab-sheet-head mobile-popup-head">
+          <span>Tabs</span>
           <CloseButton
             label="Close tab switcher"
             disabled={transitionPending}
             onClick={closeIfIdle}
           />
         </div>
+        {!focusedWs ? <p>Select or create a workspace to open tabs.</p> : null}
         <div className="mobile-tab-sheet-list" role="list">
           {tabs.map((t) => {
             const name = tabName(t);
@@ -192,16 +222,17 @@ export function MobileTabSheet({
           type="button"
           className="mobile-tab-sheet-new"
           title={createReason ?? undefined}
-          disabled={transitionPending || !!createReason}
+          disabled={!focusedWs || transitionPending || !!createReason}
           onClick={() =>
-            void runTabTransition(() => store.createTab(focusedWs.workspace_id))
+            void runTabTransition(() =>
+              store.createTab(focusedWs!.workspace_id),
+            )
           }
         >
           <Plus size={15} />
           <span>{createReason ?? "New Tab"}</span>
         </button>
       </div>
-    </div>,
-    document.body,
+    </>
   );
 }

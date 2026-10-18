@@ -1,4 +1,5 @@
-import { createPortal, flushSync } from "react-dom";
+import { MobileBottomBar } from "./components/MobileBottomBar";
+import { createPortal } from "react-dom";
 import { bridge } from "./api";
 import {
   listenForTaskNotificationActivation,
@@ -22,13 +23,6 @@ import {
   type ReviewAnnotation,
 } from "./annotations";
 import { roamgateLocalStorage, subscribeLocalStorage } from "./browserStorage";
-import {
-  MOBILE_CONTROLS_PLACEMENT_STORAGE_KEY,
-  readMobileControlsPlacement,
-  writeMobileControlsPlacement,
-  type MobileControlsPlacement,
-} from "./mobileControlsPlacement";
-import { useMobileControlsDrag } from "./components/useMobileControlsDrag";
 import { LAYOUT_CHANGE_EVENT, useLayoutPreferences } from "./layoutPreferences";
 import { useSystemBack } from "./systemBack";
 import {
@@ -37,7 +31,7 @@ import {
   useShortcutPreferences,
 } from "./shortcutPreferences";
 import { SHORTCUT_NUMBERS } from "./shortcutBindings";
-import { activeTerminalInput } from "./activeTerminalInput";
+import { activeTerminalInput, blurActiveInput } from "./activeTerminalInput";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -53,15 +47,10 @@ import {
   LoaderCircle,
   MessageSquareText,
   Minimize2,
-  MoreHorizontal,
   PanelTop,
-  SquarePen,
-  SquareStack,
   SquareTerminal,
-  X,
 } from "lucide-react";
 import {
-  type CSSProperties,
   Suspense,
   useCallback,
   useEffect,
@@ -89,7 +78,7 @@ import {
   type ThemePreference,
 } from "./appearance";
 import { AgentIcon } from "./components/AgentIcon";
-import { paneHasAgentHistory } from "./components/agentSession";
+import { agentStateKind, paneHasAgentHistory } from "./components/agentSession";
 import { CloseButton } from "./components/CloseButton";
 import { focusIfUnchanged } from "./components/dialogFocus";
 import { CommandCombobox } from "./components/CommandCombobox";
@@ -170,8 +159,6 @@ import { copyTextFromUserGesture } from "./terminalClipboard";
 import { terminalPasteRequest } from "./terminalPaste";
 import {
   activateTerminalComposerDraftScope,
-  readTerminalComposerDraft,
-  subscribeTerminalComposerDraft,
   terminalComposerDraftKey,
 } from "./terminalComposer";
 import { terminalMountKey } from "./terminalConnection";
@@ -282,6 +269,8 @@ function PopupOverlay({
 type TerminalViewProps = {
   paneId?: string;
   visible?: boolean;
+  mobileInputTarget?: HTMLElement | null;
+  onActivateTerminalSurface?: () => void;
   terminalTheme: ITheme;
   terminalFontFamily: string;
   terminalFontScale: number;
@@ -680,22 +669,6 @@ function isEditableElement(target: EventTarget | null) {
   return target.isContentEditable;
 }
 
-function blurActiveInput(event: React.PointerEvent<HTMLButtonElement>) {
-  // A compact-row gesture may be a horizontal pan. Dismiss input only once
-  // its native click handler confirms navigation, not at the start of a swipe.
-  if (
-    event.currentTarget.closest(
-      ".app[data-mobile-controls-compact] .mobile-controls-stack",
-    )
-  )
-    return;
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur();
-  }
-  const button = event.currentTarget;
-  window.setTimeout(() => button.blur(), 0);
-}
-
 function tabShortcutIndex(e: KeyboardEvent) {
   const number = SHORTCUT_NUMBERS.find((n) => shortcutMatches(e, `tab.${n}`));
   return number === undefined ? null : number - 1;
@@ -1006,6 +979,8 @@ function resizeTargetForSplit(
 // the old full terminal view.
 function TerminalPaneLayout({
   visible,
+  mobileInputTarget,
+  onActivateTerminalSurface,
   terminalTheme,
   terminalFontFamily,
   terminalFontScale,
@@ -1020,6 +995,8 @@ function TerminalPaneLayout({
   onExitZenMode,
 }: {
   visible: boolean;
+  mobileInputTarget: HTMLElement | null;
+  onActivateTerminalSurface: () => void;
   terminalTheme: ITheme;
   terminalFontFamily: string;
   terminalFontScale: number;
@@ -1079,6 +1056,8 @@ function TerminalPaneLayout({
         mobileShortcuts={mobileShortcuts}
         mobileSideShortcuts={mobileSideShortcuts}
         visible={visible}
+        mobileInputTarget={mobileInputTarget}
+        onActivateTerminalSurface={onActivateTerminalSurface}
         composerOpen={composerOpen}
         onComposerOpenChange={onComposerOpenChange}
         agentHistoryOpen={agentHistoryOpen}
@@ -1139,6 +1118,8 @@ function TerminalPaneLayout({
           mobileShortcuts={mobileShortcuts}
           mobileSideShortcuts={mobileSideShortcuts}
           visible={visible}
+          mobileInputTarget={mobileInputTarget}
+          onActivateTerminalSurface={onActivateTerminalSurface}
           composerOpen={composerOpen}
           onComposerOpenChange={onComposerOpenChange}
           agentHistoryOpen={agentHistoryOpen}
@@ -1250,6 +1231,8 @@ function TerminalPaneLayout({
               mobileShortcuts={mobileShortcuts}
               mobileSideShortcuts={mobileSideShortcuts}
               visible={visible}
+              mobileInputTarget={mobileInputTarget}
+              onActivateTerminalSurface={onActivateTerminalSurface}
               composerOpen={isActive ? composerOpen : false}
               onComposerOpenChange={isActive ? onComposerOpenChange : undefined}
               agentHistoryOpen={isActive ? agentHistoryOpen : false}
@@ -1389,31 +1372,26 @@ export default function App() {
   const [sidebarHidden, setSidebarHidden] = useState(loadZenMode);
   // What the sidebar was doing before Zen hid it, restored when Zen ends.
   const sidebarBeforeZenRef = useRef(false);
-  const [mobileControlsCollapsed, setMobileControlsCollapsed] = useState(false);
-  const [mobileControlsPlacement, setMobileControlsPlacement] = useState(
-    readMobileControlsPlacement,
-  );
-  const appRef = useRef<HTMLDivElement>(null);
-  const mobileControlsToggleRef = useRef<HTMLButtonElement>(null);
-  const mobileControlsOffset = useMobileControlsDrag({
-    enabled: mobile,
-    appRef,
-    toggleRef: mobileControlsToggleRef,
-    placement: mobileControlsPlacement,
-    onPlacementChange: (next: MobileControlsPlacement) => {
-      setMobileControlsPlacement(next);
-      writeMobileControlsPlacement(next);
-    },
-  });
   const [mobileTabSheetOpen, setMobileTabSheetOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [mobileInputTarget, setMobileInputTarget] =
+    useState<HTMLDivElement | null>(null);
+  useSystemBack(
+    mobile && mobileMoreOpen,
+    () => setMobileMoreOpen(false),
+    "popup",
+  );
+  useEffect(() => setMobileMoreOpen(false), [mobileView]);
   const terminalComposerScopeKey = JSON.stringify([
     s.activeConnectionId,
     s.connectionGeneration,
   ]);
+  useEffect(() => {
+    setMobileTabSheetOpen(false);
+    setMobileMoreOpen(false);
+  }, [mobile, terminalComposerScopeKey]);
   const [openTerminalComposerScopeKey, setOpenTerminalComposerScopeKey] =
     useState<string | null>(null);
-  const [terminalComposerHasDraft, setTerminalComposerHasDraft] =
-    useState(false);
   const [paneJumpOpen, setPaneJumpOpen] = useState(false);
   const [paneJumpIndex, setPaneJumpIndex] = useState(0);
   // null keeps the most-recently-used list; a string switches to typed search.
@@ -1522,10 +1500,20 @@ export default function App() {
     ? s.tabs.filter((tab) => tab.workspace_id === focusedWorkspace.workspace_id)
         .length
     : 0;
+  // Another pane in the focused workspace has an agent blocked on the user.
+  const focusedWorkspaceAttention = focusedWorkspace
+    ? s.panes.some(
+        (pane) =>
+          pane.workspace_id === focusedWorkspace.workspace_id &&
+          !pane.focused &&
+          agentStateKind(pane.agent_status) === "blocked",
+      )
+    : false;
   useEffect(() => {
     // Drop mobile-only controls when their context disappears so they cannot
     // stay active invisibly or resurface when the mobile layout returns.
-    if (!mobile || !focusedWorkspace) setMobileTabSheetOpen(false);
+    if (!mobile) setMobileTabSheetOpen(false);
+    if (!mobile) setMobileMoreOpen(false);
     if (!mobile) setOpenTerminalComposerScopeKey(null);
   }, [mobile, focusedWorkspace]);
   useEffect(() => {
@@ -1545,7 +1533,6 @@ export default function App() {
       : null;
   const terminalComposerOpen =
     mobile &&
-    !mobileTabSheetOpen &&
     openTerminalComposerScopeKey === terminalComposerScopeKey &&
     activeTerminalComposerDraftKey !== null;
   const setTerminalComposerOpen = useCallback(
@@ -1554,18 +1541,6 @@ export default function App() {
     },
     [terminalComposerScopeKey],
   );
-  useEffect(() => {
-    if (!activeTerminalComposerDraftKey) {
-      setTerminalComposerHasDraft(false);
-      return;
-    }
-    const update = (draft: string) => setTerminalComposerHasDraft(draft !== "");
-    update(readTerminalComposerDraft(activeTerminalComposerDraftKey));
-    return subscribeTerminalComposerDraft(
-      activeTerminalComposerDraftKey,
-      update,
-    );
-  }, [activeTerminalComposerDraftKey]);
   const paneJumpOptions = useMemo(() => {
     const snapshot = {
       layout: s.layout,
@@ -1671,6 +1646,7 @@ export default function App() {
     [],
   );
   const activateTerminalSurface = useCallback(() => {
+    setMobileMoreOpen(false);
     updateInspectorState((current) =>
       current ? { ...current, open: false } : current,
     );
@@ -1951,10 +1927,10 @@ export default function App() {
     requestAnimationFrame(() => {
       const terminal = mobile ? null : activeTerminalInput(document);
       focusIfUnchanged(
-        mobile && mobileControlsCollapsed
-          ? mobileControlsToggleRef.current
-          : (terminal ??
-              document.querySelector<HTMLElement>(".assistant-entry")),
+        terminal ??
+          document.querySelector<HTMLElement>(
+            mobile ? ".mobile-appbar-more" : ".assistant-entry",
+          ),
         source,
       );
     });
@@ -2810,10 +2786,6 @@ export default function App() {
     store.init();
   }, []);
   useEffect(() => {
-    if (mobile && mobileView === "annotations")
-      setMobileControlsCollapsed(false);
-  }, [mobile, mobileView]);
-  useEffect(() => {
     if (!mobile) return;
     const current = inspectorStateRef.current;
     setMobileView(
@@ -3535,8 +3507,6 @@ export default function App() {
           setAssistantFloating(
             roamgateLocalStorage.getItem("assistantPanelMode") !== "fixed",
           );
-        if (key === null || key === MOBILE_CONTROLS_PLACEMENT_STORAGE_KEY)
-          setMobileControlsPlacement(readMobileControlsPlacement());
         if (
           key === null ||
           key === MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY ||
@@ -3799,7 +3769,6 @@ export default function App() {
           : "Open Ranger"
       }
       aria-pressed={assistantVisible}
-      tabIndex={mobile && mobileControlsCollapsed ? -1 : 0}
       onPointerDown={mobile ? blurActiveInput : undefined}
       onClick={toggleAssistant}
     >
@@ -3815,17 +3784,10 @@ export default function App() {
   );
   return (
     <div
-      ref={appRef}
       className={`app ${sidebarHidden && !mobile ? "sidebar-hidden" : ""} ${
         zenMode && !mobile ? "zen" : ""
-      } ${mobile && assistantVisible ? "assistant-view" : ""} ${mobileControlsCollapsed ? "mobile-controls-collapsed" : ""} ${
-        mobileControlsPlacement.side === "left" ? "mobile-controls-left" : ""
-      }`}
-      style={
-        {
-          "--mobile-controls-offset-y": `${mobileControlsOffset}px`,
-        } as CSSProperties
-      }
+      } ${mobile && assistantVisible ? "assistant-view" : ""}`}
+      data-mobile-more={mobile && mobileMoreOpen ? "open" : undefined}
     >
       <header className="topbar">
         <div className="topbar-start">
@@ -3914,18 +3876,48 @@ export default function App() {
         </button>
       ) : null}
 
-      <div className="mobile-controls-stack">
-        <nav
-          className="mobile-nav"
-          aria-label="Workspace view switcher"
-          aria-hidden={mobileControlsCollapsed}
-        >
+      <MobileTabSheet
+        open={mobile && mobileTabSheetOpen}
+        onClose={() => setMobileTabSheetOpen(false)}
+        onShowSession={activateTerminalSurface}
+      />
+      {mobile && mobileMoreOpen ? (
+        <button
+          type="button"
+          className="mobile-more-backdrop"
+          aria-label="Close more options"
+          onClick={() => setMobileMoreOpen(false)}
+        />
+      ) : null}
+      <div
+        className="mobile-controls-stack"
+        id="mobile-more-options"
+        role="region"
+        aria-label="More options"
+        onClick={(event) => {
+          // Choosing a view or tool from the ⋮ menu dismisses it.
+          if (
+            mobileMoreOpen &&
+            (event.target as Element).closest?.("button:not(:disabled)")
+          )
+            setMobileMoreOpen(false);
+        }}
+      >
+        {mobile && mobileMoreOpen ? (
+          <div className="mobile-more-head mobile-popup-head">
+            <span>More options</span>
+            <CloseButton
+              label="Close more options"
+              onClick={() => setMobileMoreOpen(false)}
+            />
+          </div>
+        ) : null}
+        <nav className="mobile-nav" aria-label="Workspace view switcher">
           <button
             type="button"
             className={mobileView === "commits" ? "active" : ""}
             title="Commits"
             aria-label="Show commit history"
-            tabIndex={mobileControlsCollapsed ? -1 : 0}
             onClick={() => openInspector("commits")}
           >
             <GitGraph size={16} />
@@ -3937,7 +3929,6 @@ export default function App() {
             title={shortcutTitle("Annotations", "annotations.toggle")}
             aria-label="Show review annotations"
             aria-pressed={annotationsOpen}
-            tabIndex={mobileControlsCollapsed ? -1 : 0}
             onClick={toggleAnnotations}
           >
             <MessageSquareText size={16} />
@@ -3956,7 +3947,6 @@ export default function App() {
             }
             aria-label="Show agent message history"
             aria-pressed={historyInspectorOpen}
-            tabIndex={mobileControlsCollapsed ? -1 : 0}
             disabled={!activePaneHasAgent && !historyInspectorOpen}
             onClick={() => {
               if (historyInspectorOpen && mobileView !== "history") {
@@ -3970,36 +3960,11 @@ export default function App() {
             <span className="mobile-nav-label">History</span>
           </button>
         </nav>
-        <MobileTabSheet
-          open={mobile && mobileTabSheetOpen}
-          onClose={() => setMobileTabSheetOpen(false)}
-          onShowSession={activateTerminalSurface}
-        />
         <nav
           className="mobile-nav mobile-workspace-tools"
-          aria-label="Ranger, workspaces, and tabs"
-          aria-hidden={mobileControlsCollapsed}
+          aria-label="Ranger and workspaces"
         >
           {mobile ? assistantEntry : null}
-          <button
-            type="button"
-            className={mobileTabSheetOpen ? "active" : ""}
-            title="Tabs"
-            aria-label="Show tabs"
-            aria-pressed={mobileTabSheetOpen}
-            tabIndex={mobileControlsCollapsed ? -1 : 0}
-            disabled={!focusedWorkspace}
-            onPointerDown={blurActiveInput}
-            onClick={() => setMobileTabSheetOpen((open) => !open)}
-          >
-            <SquareStack size={16} />
-            {focusedWorkspaceTabCount > 0 ? (
-              <span className="mobile-nav-badge" aria-hidden="true">
-                {focusedWorkspaceTabCount}
-              </span>
-            ) : null}
-            <span className="mobile-nav-label">Tabs</span>
-          </button>
           <button
             type="button"
             className={mobileView === "workspaces" ? "active" : ""}
@@ -4010,7 +3975,6 @@ export default function App() {
                 : "Show workspaces"
             }
             aria-pressed={mobileView === "workspaces"}
-            tabIndex={mobileControlsCollapsed ? -1 : 0}
             onPointerDown={blurActiveInput}
             onClick={
               mobileView === "workspaces"
@@ -4026,7 +3990,6 @@ export default function App() {
           <nav
             className="mobile-nav mobile-terminal-tools"
             aria-label="Terminal, files, and changes"
-            aria-hidden={mobileControlsCollapsed}
           >
             <button
               type="button"
@@ -4035,7 +3998,6 @@ export default function App() {
               }
               title="Terminal"
               aria-label="Show terminal session"
-              tabIndex={mobileControlsCollapsed ? -1 : 0}
               onClick={activateTerminalSurface}
             >
               <SquareTerminal size={16} />
@@ -4046,7 +4008,6 @@ export default function App() {
               className={mobileView === "files" ? "active" : ""}
               title={shortcutTitle("Files", "files.toggle")}
               aria-label="Show workspace files"
-              tabIndex={mobileControlsCollapsed ? -1 : 0}
               onClick={() => openFileExplorer()}
             >
               <FolderTree size={16} />
@@ -4057,74 +4018,14 @@ export default function App() {
               className={mobileView === "changes" ? "active" : ""}
               title={shortcutTitle("Changes", "diff.toggle")}
               aria-label="Show workspace changes"
-              tabIndex={mobileControlsCollapsed ? -1 : 0}
               onClick={() => openDiffViewer()}
             >
               <FileDiff size={16} />
               <span className="mobile-nav-label">Changes</span>
             </button>
           </nav>
-          <button
-            ref={mobileControlsToggleRef}
-            type="button"
-            className="mobile-controls-toggle"
-            aria-description="Drag to move the controls"
-            aria-label={
-              mobileControlsCollapsed
-                ? "Show mobile controls"
-                : "Hide mobile controls"
-            }
-            title={
-              mobileControlsCollapsed
-                ? "Show mobile controls"
-                : "Hide mobile controls"
-            }
-            aria-pressed={mobileControlsCollapsed}
-            onClick={() => setMobileControlsCollapsed((value) => !value)}
-          >
-            {mobileControlsCollapsed ? (
-              <MoreHorizontal size={17} />
-            ) : (
-              <X size={17} />
-            )}
-          </button>
         </div>
       </div>
-
-      {activeTerminalComposerDraftKey && !terminalComposerOpen ? (
-        <button
-          type="button"
-          className="mobile-composer-shortcut"
-          title="Open terminal input"
-          aria-label={`Open terminal input${terminalComposerHasDraft ? ", unsent draft" : ""}`}
-          aria-haspopup="dialog"
-          onPointerDown={blurActiveInput}
-          onClick={() => {
-            flushSync(() => {
-              setMobileTabSheetOpen(false);
-              activateTerminalSurface();
-              setTerminalComposerOpen(true);
-            });
-            // The tap is the request to type. The dock routes Direct to the
-            // terminal; in Composer, focus the draft within this gesture so
-            // phones raise the keyboard in one tap. Later dock focus (sends,
-            // commands, uploads) stays neutral.
-            const dock =
-              document.querySelector<HTMLElement>(".terminal-composer");
-            dock?.focus({ preventScroll: true });
-            if (dock?.dataset.inputMode === "composer")
-              dock
-                .querySelector<HTMLElement>(".terminal-composer-input")
-                ?.focus({ preventScroll: true });
-          }}
-        >
-          <SquarePen size={20} />
-          {terminalComposerHasDraft ? (
-            <span className="mobile-composer-draft-dot" aria-hidden="true" />
-          ) : null}
-          <span className="mobile-nav-label">Type</span>
-        </button>
-      ) : null}
 
       {s.updateInfo?.update_available || s.notice
         ? createPortal(
@@ -4279,6 +4180,8 @@ export default function App() {
             >
               <div className="workspace-terminal-surface">
                 <TerminalPaneLayout
+                  mobileInputTarget={mobileInputTarget}
+                  onActivateTerminalSurface={activateTerminalSurface}
                   visible={!mobile || mobileView === "session"}
                   terminalTheme={terminalTheme}
                   terminalFontFamily={terminalFontFamily}
@@ -4467,6 +4370,17 @@ export default function App() {
           </div>
         </main>
       </div>
+      {mobile ? (
+        <MobileBottomBar
+          inputRef={setMobileInputTarget}
+          tabCount={focusedWorkspaceTabCount}
+          attention={focusedWorkspaceAttention}
+          tabsOpen={mobileTabSheetOpen}
+          moreOpen={mobileMoreOpen}
+          onTabsOpenChange={setMobileTabSheetOpen}
+          onMoreOpenChange={setMobileMoreOpen}
+        />
+      ) : null}
       {/* Before the tooltip layer, which shares the modal z-index. */}
       {shortcutCheatSheetOpen && !mobile ? (
         <Suspense fallback={null}>

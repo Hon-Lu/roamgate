@@ -74,6 +74,12 @@ import {
   decodeTerminalClipboard,
 } from "../terminalClipboard";
 import {
+  beginTerminalComposerUpload,
+  finishTerminalComposerUpload,
+  retainTerminalComposerUploadPaths,
+  terminalComposerSubmissionPending,
+  terminalComposerDraftKeyIsActive,
+  insertIntoTerminalComposerDraft,
   terminalComposerCloseWarning,
   terminalComposerDraftKey,
   terminalComposerDraftPaneIds,
@@ -314,6 +320,8 @@ export type TerminalWorkspaceFileRequest = {
 export function TerminalView({
   paneId,
   visible = true,
+  mobileInputTarget,
+  onActivateTerminalSurface,
   terminalTheme,
   terminalFontFamily,
   terminalFontScale,
@@ -328,6 +336,8 @@ export function TerminalView({
 }: {
   paneId?: string;
   visible?: boolean;
+  mobileInputTarget?: HTMLElement | null;
+  onActivateTerminalSurface?: () => void;
   terminalTheme: ITheme;
   terminalFontFamily: string;
   terminalFontScale: number;
@@ -646,6 +656,109 @@ export function TerminalView({
   useLayoutEffect(() => {
     paneLayoutRef.current = s.layout;
   }, [s.layout]);
+  // Invalidate across mode/target/lifecycle transitions, including away-and-back.
+  // Native picker blur alone is deliberately not an invalidation.
+  const pathInsertionEpochRef = useRef(0);
+  const pasteUploadedPathRef = useRef<
+    ((text: string, paneId: string) => Promise<boolean>) | null
+  >(null);
+  useLayoutEffect(() => {
+    pathInsertionEpochRef.current++;
+    return () => {
+      pathInsertionEpochRef.current++;
+    };
+  }, [
+    connectionClient,
+    pane?.pane_id,
+    pane?.terminal_id,
+    isActivePane,
+    visible,
+    composerMode,
+    composerOpen,
+  ]);
+  useEffect(() => {
+    const targetSnapshot = () => {
+      const state = store.get();
+      const active = activePaneIdForSnapshot(state);
+      return JSON.stringify([
+        active,
+        state.panes.find((p) => p.pane_id === active)?.terminal_id,
+        state.activeConnectionId,
+        state.connectionGeneration,
+        state.status,
+        state.connectionPaused,
+        state.terminalAttachEpoch,
+      ]);
+    };
+    let active = targetSnapshot();
+    const unsubscribe = store.subscribe(() => {
+      const next = targetSnapshot();
+      if (
+        next !== active ||
+        store.get().status !== "connected" ||
+        store.get().connectionPaused
+      )
+        pathInsertionEpochRef.current++;
+      active = next;
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+  const preparePathInsertion = () => {
+    const destinationPaneId = paneIdRef.current;
+    const terminalId = paneTerminalIdRef.current;
+    const state = store.get();
+    const key = terminalComposerDraftKey(
+      state.activeConnectionId,
+      state.connectionGeneration,
+      destinationPaneId ?? "",
+    );
+    const mode = isMobileLayout() ? composerModeRef.current : "direct";
+    const epoch = pathInsertionEpochRef.current;
+    return async (text: string) => {
+      if (!text) return;
+      try {
+        if (mode === "composer") {
+          if (
+            !terminalComposerDraftKeyIsActive(key) ||
+            !connectionClient.isCurrent()
+          )
+            throw new Error("The original draft is no longer active");
+          insertIntoTerminalComposerDraft(key, text);
+          return;
+        }
+        const current = store.get();
+        if (
+          !visible ||
+          !destinationPaneId ||
+          !terminalId ||
+          epoch !== pathInsertionEpochRef.current ||
+          !connectionClient.isCurrent() ||
+          !isActivePaneRef.current ||
+          activePaneIdForSnapshot(current) !== destinationPaneId ||
+          current.panes.find((p) => p.pane_id === destinationPaneId)
+            ?.terminal_id !== terminalId ||
+          (isMobileLayout() && composerModeRef.current !== "direct") ||
+          terminalComposerSubmissionPending(key) ||
+          !(await pasteUploadedPathRef.current?.(text, destinationPaneId))
+        ) {
+          throw new Error(
+            "The original terminal or input mode is no longer available",
+          );
+        }
+      } catch (error) {
+        retainTerminalComposerUploadPaths(key, text);
+        store.notify({
+          kind: "error",
+          message: "Path insertion failed",
+          detail: `${error instanceof Error ? error.message : "Input failed"}. Path retained in the original pane's Message draft (not sent again). ${text}`,
+        });
+      }
+    };
+  };
+  const preparePathInsertionRef = useRef(preparePathInsertion);
+  preparePathInsertionRef.current = preparePathInsertion;
   const focusTerminalSoon = useCallback(() => {
     if (
       !isActivePaneRef.current ||
@@ -1397,19 +1510,25 @@ export function TerminalView({
         inputSession !== inputSessionRef.current ||
         destinationPaneId !== (paneIdRef.current ?? null)
       )
-        return;
+        return false;
       imeCommitGuard.beginIndependentInput();
       if (destinationPaneId) {
         const request = terminalPasteRequest(destinationPaneId, text);
         await connectionClient.call(request.method, request.params);
-        return;
+        return true;
       }
       const activeTerm = termRef.current;
       if (activeTerm) {
         activeTerm.paste(text);
-        return;
+        return true;
       }
       sendText(text);
+      return true;
+    };
+    pasteUploadedPathRef.current = (text, destination) => {
+      if (terminalCompositionActive)
+        return Promise.reject(new Error("Terminal text composition is active"));
+      return pasteText(text, destination, inputSessionRef.current, true);
     };
     const sendMissingImeText = (
       text: string,
@@ -1449,10 +1568,50 @@ export function TerminalView({
         () => connectionClient.isCurrent(),
         setPasteLoading,
       );
+    const uploadFilesAndInsert = async (
+      files: File[],
+      upload: (file: File) => Promise<string>,
+      insert = preparePathInsertionRef.current(),
+      uploadKey?: string,
+    ) => {
+      const destination = paneIdRef.current;
+      if (!destination) return;
+      const key =
+        uploadKey ??
+        terminalComposerDraftKey(
+          terminalIdentity.connectionId,
+          terminalIdentity.generation,
+          destination,
+        );
+      if (
+        terminalComposerSubmissionPending(key) ||
+        !beginTerminalComposerUpload(key)
+      )
+        return;
+      const paths: string[] = [];
+      try {
+        for (const file of files) paths.push(await upload(file));
+        await insert(terminalUploadedPathsText(paths));
+        paths.length = 0;
+      } catch (error) {
+        if (paths.length) {
+          const retained = terminalUploadedPathsText(paths);
+          retainTerminalComposerUploadPaths(key, retained);
+          store.notify({
+            kind: "error",
+            message: "File upload incomplete",
+            detail: `Successful paths retained in the original pane's Message draft: ${retained}`,
+          });
+        }
+        throw error;
+      } finally {
+        finishTerminalComposerUpload(key);
+      }
+    };
     const pasteImage = async (
       blob: Blob,
-      destinationPaneId: string | null,
-      inputSession = inputSessionRef.current,
+      insert = preparePathInsertionRef.current(),
+      uploadKey?: string,
     ) => {
       const file =
         blob instanceof File
@@ -1460,14 +1619,24 @@ export function TerminalView({
           : new File([blob], "clipboard-image.png", {
               type: blob.type || "image/png",
             });
-      const path = await uploadTerminalImage(connectionClient, file);
-      await pasteText(path, destinationPaneId, inputSession);
+      await uploadFilesAndInsert(
+        [file],
+        (file) => uploadTerminalImage(connectionClient, file),
+        insert,
+        uploadKey,
+      );
     };
     let clipboardPasteInFlight = false;
     const pasteFromBrowserClipboard = async () => {
       if (!acceptsInput() || clipboardPasteInFlight) return;
       const inputSession = inputSessionRef.current;
       clipboardPasteInFlight = true;
+      const insertImage = preparePathInsertionRef.current();
+      const uploadKey = terminalComposerDraftKey(
+        terminalIdentity.connectionId,
+        terminalIdentity.generation,
+        paneIdRef.current ?? "",
+      );
       const destinationPaneId = paneIdRef.current ?? null;
       try {
         await runPasteOperation(async () => {
@@ -1490,7 +1659,7 @@ export function TerminalView({
                   CLIPBOARD_READ_TIMEOUT_MS,
                   "Clipboard image read timed out",
                 );
-                await pasteImage(blob, destinationPaneId, inputSession);
+                await pasteImage(blob, insertImage, uploadKey);
                 return;
               }
             }
@@ -1905,7 +2074,11 @@ export function TerminalView({
         return;
       }
       const items = Array.from(e.clipboardData?.items ?? []);
-      const img = items.find((it) => it.type.startsWith("image/"))?.getAsFile();
+      const files = items
+        .filter((it) => it.kind === "file")
+        .map((it) => it.getAsFile())
+        .filter((file): file is File => file !== null);
+      const img = files.length > 0;
       const text = img ? "" : (e.clipboardData?.getData("text/plain") ?? "");
       const active = document.activeElement;
       const target = e.target;
@@ -1953,11 +2126,15 @@ export function TerminalView({
       e.preventDefault();
       e.stopPropagation();
       try {
-        await runPasteOperation(() =>
-          img
-            ? pasteImage(img, destinationPaneId)
-            : pasteText(text, destinationPaneId),
-        );
+        await runPasteOperation(async () => {
+          await (img
+            ? uploadFilesAndInsert(files, (file) =>
+                file.type.startsWith("image/")
+                  ? uploadTerminalImage(connectionClient, file)
+                  : uploadTerminalFile(connectionClient, file),
+              )
+            : pasteText(text, destinationPaneId));
+        });
       } catch (err) {
         setUploadError(
           `${img ? "Image upload" : "Text paste"} failed: ${(err as Error).message}`,
@@ -1974,7 +2151,7 @@ export function TerminalView({
           !isNativeFileDrag(e.dataTransfer))
       )
         return;
-      if (!acceptsEndpointInput()) return;
+      if (!connectionClient.isCurrent() || !isActivePaneRef.current) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
     };
@@ -1987,18 +2164,11 @@ export function TerminalView({
         return;
       e.preventDefault();
       e.stopPropagation();
-      if (!acceptsEndpointInput()) return;
-      const destinationPaneId = paneIdRef.current ?? null;
-      const inputSession = inputSessionRef.current;
-      const activePaneAtDrop = activePaneIdForSnapshot(store.get());
+      if (!connectionClient.isCurrent() || !isActivePaneRef.current) return;
+      const insert = preparePathInsertionRef.current();
       if (isWorkspacePathDrag(e.dataTransfer)) {
         const path = workspacePathFromDrag(e.dataTransfer);
-        if (!path) return;
-        void runPasteOperation(() =>
-          pasteText(path, destinationPaneId, inputSession, true),
-        ).catch((err) => {
-          setUploadError(`Path paste failed: ${(err as Error).message}`);
-        });
+        if (path) void insert(path);
         return;
       }
       const files = filesFromTerminalDrop(e.dataTransfer);
@@ -2007,29 +2177,15 @@ export function TerminalView({
         return;
       }
       if (!files?.length) return;
-      let paneSwitched = false;
-      const stopWatchingPane = store.subscribe(() => {
-        if (activePaneIdForSnapshot(store.get()) !== activePaneAtDrop)
-          paneSwitched = true;
+      void runPasteOperation(() =>
+        uploadFilesAndInsert(
+          files,
+          (file) => uploadTerminalFile(connectionClient, file),
+          insert,
+        ),
+      ).catch((err) => {
+        setUploadError(`File upload failed: ${(err as Error).message}`);
       });
-      void runPasteOperation(async () => {
-        const paths: string[] = [];
-        for (const file of files) {
-          if (paneSwitched) return;
-          paths.push(await uploadTerminalFile(connectionClient, file));
-        }
-        if (paneSwitched) return;
-        await pasteText(
-          terminalUploadedPathsText(paths),
-          destinationPaneId,
-          inputSession,
-          true,
-        );
-      })
-        .catch((err) => {
-          setUploadError(`File upload failed: ${(err as Error).message}`);
-        })
-        .finally(stopWatchingPane);
     };
     container.addEventListener("dragover", onTerminalDragOver, {
       capture: true,
@@ -2725,6 +2881,7 @@ export function TerminalView({
       cancelNativePasteFallback();
       cancelPasteTextareaClear();
       disposePasteOperations();
+      pasteUploadedPathRef.current = null;
       term.textarea?.removeEventListener("keydown", onTerminalKeyDown, {
         capture: true,
       });
@@ -3229,6 +3386,38 @@ export function TerminalView({
     ]).length,
   );
 
+  const terminalComposer = (
+    <TerminalComposer
+      key={composerDraftKey}
+      draftKey={composerDraftKey}
+      paneId={pane.pane_id}
+      open={composerOpen}
+      accessoriesVisible={visible}
+      reserved={visible && touchHandles.length > 0}
+      agent={pane.agent}
+      mode={composerMode}
+      onModeChange={(mode, remember) => {
+        if (!connectionClient.isCurrent() || !isActivePaneRef.current) return;
+        onActivateTerminalSurface?.();
+        closeTerminalInput();
+        setComposerMode(mode);
+        setComposerOpen(true);
+        if (remember) rememberTerminalInputMode(mode);
+      }}
+      onFocusDirect={focusTerminalInput}
+      directDisabled={directDisabled}
+      shortcutRows={mobileShortcuts}
+      onRunShortcut={runMobileShortcut}
+      shortcutDisabledReason={mobileShortcutReason}
+      onClose={() => setComposerOpen(false)}
+      onSubmit={submitTerminalComposer}
+      onPreparePathInsertion={preparePathInsertion}
+      onUploadImage={uploadComposerImage}
+      onUploadFile={uploadComposerFile}
+      onError={notifyComposerError}
+    />
+  );
+
   return (
     <>
       {fileLinkMenu
@@ -3491,7 +3680,7 @@ export function TerminalView({
           setReviewSelection(null);
         }}
       />
-      <div className="terminal-shell">
+      <div className="terminal-shell" data-pane-id={pane.pane_id}>
         <PaneDragHandle
           paneId={pane.pane_id}
           layout={s.layout}
@@ -3506,6 +3695,7 @@ export function TerminalView({
               if (event.target === event.currentTarget) focusTerminalInput();
             }}
           />
+
           {!isMobileLayout() && touchHandles.length === 0 && isActivePane ? (
             <div
               className="terminal-mobile-input-actions"
@@ -3527,7 +3717,8 @@ export function TerminalView({
               </button>
             </div>
           ) : null}
-          {touchHandles.length === 0 &&
+          {visible &&
+          touchHandles.length === 0 &&
           showMobileKeys &&
           hasMobileSideShortcuts ? (
             <div
@@ -3566,7 +3757,8 @@ export function TerminalView({
             </div>
           ) : null}
         </div>
-        {touchHandles.length === 0 &&
+        {visible &&
+        touchHandles.length === 0 &&
         !composerOpen &&
         showMobileKeys &&
         hasMobileShortcuts ? (
@@ -3641,31 +3833,13 @@ export function TerminalView({
             </div>
           </div>
         ) : null}
-        {composerOpen ? (
-          <TerminalComposer
-            key={composerDraftKey}
-            draftKey={composerDraftKey}
-            agent={pane.agent}
-            mode={composerMode}
-            onModeChange={(mode, remember) => {
-              if (!connectionClient.isCurrent() || !isActivePaneRef.current)
-                return;
-              closeTerminalInput();
-              setComposerMode(mode);
-              if (remember) rememberTerminalInputMode(mode);
-            }}
-            onFocusDirect={focusTerminalInput}
-            directDisabled={directDisabled}
-            shortcutRows={mobileShortcuts}
-            onRunShortcut={runMobileShortcut}
-            shortcutDisabledReason={mobileShortcutReason}
-            onClose={() => setComposerOpen(false)}
-            onSubmit={submitTerminalComposer}
-            onUploadImage={uploadComposerImage}
-            onUploadFile={uploadComposerFile}
-            onError={notifyComposerError}
-          />
-        ) : null}
+        {isMobileLayout() && mobileInputTarget
+          ? isActivePane
+            ? createPortal(terminalComposer, mobileInputTarget)
+            : null
+          : composerOpen
+            ? terminalComposer
+            : null}
         <div className="terminal-pane-toolbar" aria-label="Pane actions">
           {s.endpointAvailability[pane.terminal_id] &&
           store.terminalScrollReason(pane.terminal_id) ? (

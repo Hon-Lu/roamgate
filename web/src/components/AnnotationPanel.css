@@ -262,7 +262,6 @@
     min-width: 44px;
   }
 
-  .annotation-panel-footer {
-    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
-  }
+  /* Keep the normal footer padding: the global input rail below this page
+     already owns the bottom safe area. */
 }

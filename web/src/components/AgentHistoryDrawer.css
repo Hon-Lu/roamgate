@@ -635,6 +635,8 @@
     flex: 1 1 auto;
     border-width: 0;
     transform: none;
+    /* The Inspector ends above the global rail, which owns the safe area. */
+    padding-bottom: 0;
   }
 
   .agent-history-drawer-head {
