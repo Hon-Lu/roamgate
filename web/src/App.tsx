@@ -30,6 +30,7 @@ import {
 } from "./mobileControlsPlacement";
 import { useMobileControlsDrag } from "./components/useMobileControlsDrag";
 import { LAYOUT_CHANGE_EVENT, useLayoutPreferences } from "./layoutPreferences";
+import { useSystemBack } from "./systemBack";
 import {
   shortcutMatches,
   shortcutTitle,
@@ -280,6 +281,7 @@ function PopupOverlay({
 
 type TerminalViewProps = {
   paneId?: string;
+  visible?: boolean;
   terminalTheme: ITheme;
   terminalFontFamily: string;
   terminalFontScale: number;
@@ -1003,6 +1005,7 @@ function resizeTargetForSplit(
 // Render the active tab's Herdr pane layout; single-pane and zoomed tabs keep
 // the old full terminal view.
 function TerminalPaneLayout({
+  visible,
   terminalTheme,
   terminalFontFamily,
   terminalFontScale,
@@ -1016,6 +1019,7 @@ function TerminalPaneLayout({
   zenMode,
   onExitZenMode,
 }: {
+  visible: boolean;
   terminalTheme: ITheme;
   terminalFontFamily: string;
   terminalFontScale: number;
@@ -1074,6 +1078,7 @@ function TerminalPaneLayout({
         terminalFontScale={terminalFontScale}
         mobileShortcuts={mobileShortcuts}
         mobileSideShortcuts={mobileSideShortcuts}
+        visible={visible}
         composerOpen={composerOpen}
         onComposerOpenChange={onComposerOpenChange}
         agentHistoryOpen={agentHistoryOpen}
@@ -1133,6 +1138,7 @@ function TerminalPaneLayout({
           terminalFontScale={terminalFontScale}
           mobileShortcuts={mobileShortcuts}
           mobileSideShortcuts={mobileSideShortcuts}
+          visible={visible}
           composerOpen={composerOpen}
           onComposerOpenChange={onComposerOpenChange}
           agentHistoryOpen={agentHistoryOpen}
@@ -1243,6 +1249,7 @@ function TerminalPaneLayout({
               showMobileKeys={isActive}
               mobileShortcuts={mobileShortcuts}
               mobileSideShortcuts={mobileSideShortcuts}
+              visible={visible}
               composerOpen={isActive ? composerOpen : false}
               onComposerOpenChange={isActive ? onComposerOpenChange : undefined}
               agentHistoryOpen={isActive ? agentHistoryOpen : false}
@@ -1675,6 +1682,14 @@ export default function App() {
       });
     }
   }, [mobile, updateInspectorState]);
+  // The phone's Back closes the tab sheet, then returns from Workspaces,
+  // Files, Changes, Assistant or Annotations to the session.
+  useSystemBack(
+    mobileTabSheetOpen,
+    () => setMobileTabSheetOpen(false),
+    "popup",
+  );
+  useSystemBack(mobileView !== "session", activateTerminalSurface, "panel");
   const toggleSidebar = useCallback(() => {
     setMobileView("session");
     setSidebarHidden((value) => !value);
@@ -4090,10 +4105,17 @@ export default function App() {
               activateTerminalSurface();
               setTerminalComposerOpen(true);
             });
-            // Give the dock focus; Composer's editor opens the keyboard on tap.
-            document
-              .querySelector<HTMLElement>(".terminal-composer")
-              ?.focus({ preventScroll: true });
+            // The tap is the request to type. The dock routes Direct to the
+            // terminal; in Composer, focus the draft within this gesture so
+            // phones raise the keyboard in one tap. Later dock focus (sends,
+            // commands, uploads) stays neutral.
+            const dock =
+              document.querySelector<HTMLElement>(".terminal-composer");
+            dock?.focus({ preventScroll: true });
+            if (dock?.dataset.inputMode === "composer")
+              dock
+                .querySelector<HTMLElement>(".terminal-composer-input")
+                ?.focus({ preventScroll: true });
           }}
         >
           <SquarePen size={20} />
@@ -4257,6 +4279,7 @@ export default function App() {
             >
               <div className="workspace-terminal-surface">
                 <TerminalPaneLayout
+                  visible={!mobile || mobileView === "session"}
                   terminalTheme={terminalTheme}
                   terminalFontFamily={terminalFontFamily}
                   terminalFontScale={terminalFontScale}

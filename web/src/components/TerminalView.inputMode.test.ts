@@ -67,6 +67,54 @@ async function registerDomTests() {
   const { act, createElement, StrictMode } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const { flushSync } = await import("react-dom");
+  // Event-driven session history: happy-dom does not model traversal reliably.
+  const entries: { state: object | null; url: string }[] = [
+    { state: null, url: "/" },
+  ];
+  let historyIndex = 0;
+  const traversals: (() => void)[] = [];
+  const replaceLocation = browser.history.replaceState.bind(browser.history);
+  Object.defineProperty(browser, "history", {
+    value: {
+      get state() {
+        return entries[historyIndex]!.state;
+      },
+      pushState(state: object | null, _unused: string, url?: string) {
+        entries.splice(historyIndex + 1);
+        entries.push({ state, url: url ?? entries[historyIndex]!.url });
+        historyIndex++;
+        replaceLocation(state, "", entries[historyIndex]!.url);
+      },
+      replaceState(state: object | null, _unused: string, url?: string) {
+        entries[historyIndex] = {
+          state,
+          url: url ?? entries[historyIndex]!.url,
+        };
+        replaceLocation(state, "", entries[historyIndex]!.url);
+      },
+      back() {
+        traversals.push(() => {
+          if (historyIndex === 0) return;
+          const entry = entries[--historyIndex]!;
+          replaceLocation(entry.state, "", entry.url);
+          browser.dispatchEvent(
+            new browser.PopStateEvent("popstate", { state: entry.state }),
+          );
+        });
+      },
+    },
+  });
+  async function settleHistory() {
+    for (let turn = 0; turn < 8; turn++) {
+      await act(async () => {
+        await Promise.resolve();
+        for (const complete of traversals.splice(0)) complete();
+      });
+      if (!traversals.length) return;
+    }
+    throw new Error("history traversal loop");
+  }
+  let mobileLayout = true;
   const noop = () => {};
   const disposable = () => ({ dispose: noop });
   type Pane = {
@@ -161,7 +209,8 @@ async function registerDomTests() {
     },
   }));
   mock.module("../layoutPreferences", () => ({
-    isMobileLayout: () => true,
+    isMobileLayout: () => mobileLayout,
+    useLayoutPreferences: () => ({ mobile: mobileLayout }),
     LAYOUT_CHANGE_EVENT: "test-layout-change",
   }));
   mock.module("./CreateWorkspaceDialog", () => ({
@@ -259,6 +308,7 @@ async function registerDomTests() {
   }
   mock.module("@xterm/xterm", () => ({ Terminal: FakeTerminal }));
   const { TerminalView } = await import("./TerminalView");
+  const { useSystemBack } = await import("../systemBack");
   const { TERMINAL_INPUT_MODE_STORAGE_KEY } = await import(
     "../terminalInputMode"
   );
@@ -278,6 +328,10 @@ async function registerDomTests() {
   let root: Root | null = null;
   let container: HTMLDivElement;
   let open = false;
+  let visible = true;
+  let filesOpen = false;
+  let tabsOpen = false;
+  let viewKey = "initial";
   let strict = false;
   let explicitPane: string | undefined;
   let terminalFontScale = 100;
@@ -293,13 +347,20 @@ async function registerDomTests() {
     localStorage.clear();
     sessionStorage.clear();
     open = false;
+    visible = true;
+    mobileLayout = true;
+    filesOpen = false;
+    tabsOpen = false;
     strict = false;
+    viewKey = "initial";
     explicitPane = undefined;
     terminalFontScale = 100;
     mobileShortcuts = [[], []];
   });
   afterEach(async () => {
+    document.documentElement.classList.remove("keyboard-open");
     if (root) await act(async () => root?.unmount());
+    await settleHistory();
     root = null;
     clearTerminalComposerDraft(draftKey);
     document.documentElement.classList.remove("keyboard-open");
@@ -314,8 +375,35 @@ async function registerDomTests() {
       else Reflect.deleteProperty(globalThis, key);
     }
   });
+  // Model App's mobile panels around the real TerminalView, which stays
+  // mounted when CSS hides the terminal surface behind Files.
+  function MobilePanels({
+    children,
+  }: {
+    children?: import("react").ReactNode;
+  }) {
+    useSystemBack(
+      tabsOpen,
+      () => {
+        tabsOpen = false;
+        render();
+      },
+      "popup",
+    );
+    useSystemBack(
+      filesOpen,
+      () => {
+        filesOpen = false;
+        visible = true;
+        render();
+      },
+      "panel",
+    );
+    return children;
+  }
   function render() {
     const view = createElement(TerminalView, {
+      key: viewKey,
       paneId: explicitPane,
       terminalTheme: {},
       terminalFontFamily: "monospace",
@@ -323,13 +411,33 @@ async function registerDomTests() {
       showMobileKeys: false,
       mobileShortcuts,
       mobileSideShortcuts: [],
+      visible,
       composerOpen: open,
       onComposerOpenChange(next: boolean) {
         open = next;
         render();
       },
     });
-    root!.render(strict ? createElement(StrictMode, null, view) : view);
+    // App replaces its mobile single-pane branch with a desktop split tree.
+    const layout = mobileLayout
+      ? view
+      : createElement(
+          "div",
+          { key: "split" },
+          view,
+          createElement(TerminalView, {
+            paneId: "pane-b",
+            terminalTheme: {},
+            terminalFontFamily: "monospace",
+            terminalFontScale,
+            showMobileKeys: false,
+            mobileShortcuts,
+            mobileSideShortcuts: [],
+            composerOpen: false,
+          }),
+        );
+    const panels = createElement(MobilePanels, null, layout);
+    root!.render(strict ? createElement(StrictMode, null, panels) : panels);
   }
   async function mount(initiallyOpen = false, strictMode = false) {
     open = initiallyOpen;
@@ -380,7 +488,8 @@ async function registerDomTests() {
   }
   async function typeGesture() {
     // Match App's Type click: open+commit, then synchronously focus the dock
-    // root, whose handler routes Direct focus, all in one gesture.
+    // root, whose handler routes Direct focus, and in Composer the draft,
+    // all in one gesture.
     await act(async () => {
       flushSync(() => {
         open = true;
@@ -389,6 +498,10 @@ async function registerDomTests() {
       const target = container.querySelector<HTMLElement>(".terminal-composer");
       expect(target).not.toBeNull();
       target!.focus({ preventScroll: true });
+      if (target!.dataset.inputMode === "composer")
+        target!
+          .querySelector<HTMLElement>(".terminal-composer-input")
+          ?.focus({ preventScroll: true });
       // Assert during the gesture, before act can flush any later work.
       if (
         selectedMode() === "direct" &&
@@ -400,6 +513,96 @@ async function registerDomTests() {
       }
     });
   }
+
+  async function back() {
+    browser.history.back();
+    await settleHistory();
+  }
+
+  test.each([false, true])(
+    "only a visible mounted Composer consumes Back (visible %s)",
+    async (surfaceVisible) => {
+      browser.history.pushState(null, "", "/previous");
+      browser.history.pushState(null, "", "/terminal");
+      visible = surfaceVisible;
+      await mount(true);
+      const term = currentTerminal();
+      expect(container.querySelector(".terminal-composer")).not.toBeNull();
+      await back();
+      expect(open).toBe(!surfaceVisible);
+      expect(browser.location.pathname).toBe(
+        surfaceVisible ? "/terminal" : "/previous",
+      );
+      expect(currentTerminal()).toBe(term);
+    },
+  );
+
+  test("multi-pane mobile to desktop replacement removes the Composer guard", async () => {
+    browser.history.pushState(null, "", "/previous");
+    browser.history.pushState(null, "", "/terminal");
+    await mount(true, true);
+    const mobileTerminal = currentTerminal();
+    await act(async () => {
+      mobileLayout = false;
+      render();
+    });
+    await settleHistory();
+    expect(currentTerminal()).not.toBe(mobileTerminal);
+    expect(browser.history.state).not.toHaveProperty("roamgateBack");
+    expect(open).toBe(true);
+    await back();
+    expect(browser.location.pathname).toBe("/previous");
+    expect(open).toBe(true);
+  });
+
+  test.each([false, true])(
+    "Type, Files, Tabs, Back, Back restores Composer (hidden pane remount %s)",
+    async (remount) => {
+      browser.history.pushState(null, "", "/terminal");
+      writeTerminalComposerDraft(draftKey, "unsent draft");
+      await mount();
+      await typeGesture();
+      let term = currentTerminal();
+      await act(async () => {
+        visible = false;
+        filesOpen = true;
+        render();
+      });
+      if (remount) {
+        // A tab/pane replacement while Files covers the terminal must not
+        // re-register its still-open, but invisible Composer above Files.
+        await act(async () => {
+          viewKey = "replacement";
+          render();
+        });
+        expect(currentTerminal()).not.toBe(term);
+        term = currentTerminal();
+      }
+      await act(async () => {
+        tabsOpen = true;
+        render();
+      });
+      await back();
+      expect(tabsOpen).toBe(false);
+      expect(filesOpen).toBe(true);
+      expect(open).toBe(true);
+      await back();
+      expect(filesOpen).toBe(false);
+      expect(visible).toBe(true);
+      expect(open).toBe(true);
+      expect(currentTerminal()).toBe(term);
+      expect(
+        container.querySelector<HTMLTextAreaElement>(
+          '[aria-label="Terminal input draft"]',
+        )!.value,
+      ).toBe("unsent draft");
+      expect(readTerminalComposerDraft(draftKey)).toBe("unsent draft");
+      expect(selectedMode()).toBe("composer");
+      expectInputBlocked();
+      await back();
+      expect(open).toBe(false);
+    },
+  );
 
   test.each(["closed", "direct", "composer"] as const)(
     "terminal focus activates %s input after touch on a coarse-pointer desktop",
@@ -668,6 +871,9 @@ async function registerDomTests() {
         await mount();
         if (mode !== "closed") await typeGesture();
         if (mode === "direct") await choose("direct");
+        // Type's tap raised the keyboard in Composer's draft; App marks it.
+        if (mode === "composer")
+          document.documentElement.classList.add("keyboard-open");
         await frame(mouseReporting);
         const term = currentTerminal();
         term.modes.mouseTrackingMode = mouseReporting ? "drag" : "none";
@@ -962,17 +1168,13 @@ async function registerDomTests() {
     },
   );
 
-  test("Type keeps Composer neutral until its native draft is explicitly focused", async () => {
+  test("Type focuses Composer's draft in one tap, and later work stays neutral", async () => {
     await mount();
     await typeGesture();
     expect(selectedMode()).toBe("composer");
-    expect(document.activeElement).toBe(
-      container.querySelector(".terminal-composer"),
-    );
     const editor = container.querySelector<HTMLTextAreaElement>(
       '[aria-label="Terminal input draft"]',
     )!;
-    act(() => editor.focus());
     expect(document.activeElement).toBe(editor);
     act(() => editor.blur());
     const focused = document.activeElement;
